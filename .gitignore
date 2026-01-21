@@ -8,6 +8,10 @@ Cargo.lock
 *.wasm
 *.optimized.wasm
 
+# Test artifacts
+test_snapshots/
+**/test_snapshots/
+
 # IDE
 .vscode/
 .idea/

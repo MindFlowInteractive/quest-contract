@@ -103,6 +103,8 @@ mod test {
         let user = Address::generate(&env);
         let metadata = String::from_str(&env, "First Puzzle Completed");
 
+        env.mock_all_auths(); // <-- required for require_auth()
+
         let token_id = client.mint(&user, &1, &metadata);
 
         assert_eq!(token_id, 1);
@@ -111,4 +113,4 @@ mod test {
         let achievement = client.get_achievement(&token_id).unwrap();
         assert_eq!(achievement.puzzle_id, 1);
     }
-}
+} // <-- THIS closes mod test

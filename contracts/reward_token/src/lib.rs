@@ -91,6 +91,9 @@ mod test {
         let user = Address::generate(&env);
 
         client.initialize(&admin);
+
+        env.mock_all_auths(); // allow admin.require_auth() inside mint()
+
         client.mint(&user, &1000);
 
         assert_eq!(client.balance(&user), 1000);
