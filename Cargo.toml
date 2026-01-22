@@ -6,6 +6,7 @@ members = [
     "contracts/reward_token",
     "contracts/puzzle_verification", 
     "contracts/guild",
+    "contracts/tournament",
 ]
 
 [workspace.dependencies]
