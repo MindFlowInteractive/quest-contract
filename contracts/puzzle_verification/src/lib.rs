@@ -75,6 +75,8 @@ mod test {
         let solution = BytesN::from_array(&env, &[1; 32]);
 
         client.set_puzzle(&1, &solution);
+        
+        env.mock_all_auths();
 
         let result = client.verify_solution(&player, &1, &solution);
         assert!(result);
