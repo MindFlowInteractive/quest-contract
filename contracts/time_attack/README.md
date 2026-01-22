@@ -21,6 +21,14 @@ schedule.
 > Note: Reward distribution and advanced verification are currently
 > stubbed and intended to be extended in future iterations.
 
+## Period reset behavior (LastReset initialization)
+
+Leaderboards reset when `current_timestamp - last_reset >= duration_seconds` (implemented with
+`saturating_sub` to avoid underflow if timestamps ever behave unexpectedly).
+On first use for a given `(scope, period)`, `LastReset` is initialized to the
+current ledger timestamp and **no reset is performed** on that call (the period
+tracking starts at that moment).
+
 ## Prerequisites
 
 This contract is written in Rust and uses Cargo for building and testing.

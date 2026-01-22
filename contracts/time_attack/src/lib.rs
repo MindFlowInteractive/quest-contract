@@ -27,22 +27,12 @@ pub enum TimePeriod {
 
 #[contracttype]
 pub enum DataKey {
-    // Admin / config
-    Admin,        // Address
-    TopN,         // u32
-    RewardAmount, // i128 (STUB: future world-record reward amount)
-
-    // Timing (only used if start_run/submit_run)
-    RunStart(Address, u32), // u64
-
-    // Anti-cheat
-    LastSubmit(Address),    // u64
-    ReplayUsed(BytesN<32>), // bool
-
-    // Leaderboards (flexible)
-    Best(Scope, TimePeriod),      // TimeRecord (later)
-    Board(Scope, TimePeriod),     // Vec<TimeRecord> (later)
-    LastReset(Scope, TimePeriod), // u64
+    Admin,
+    LastSubmit(Address),
+    ReplayUsed(BytesN<32>),
+    Best(Scope, TimePeriod),
+    Board(Scope, TimePeriod),
+    LastReset(Scope, TimePeriod),
 }
 
 /// Custom error codes for the contract
@@ -56,8 +46,7 @@ pub enum Error {
     TooFrequent = 4,
     DuplicateReplay = 5,
     ContractNotInitialized = 6,
-    InvalidPuzzleId = 7,
-    InvalidRewardAmount = 8, // STUB: used by set_reward_amount
+    // NOTE(MVP): `InvalidPuzzleId` intentionally omitted until puzzle-id validation rules are defined.
 }
 
 /// A single player completion record for a puzzle run submission.
@@ -68,19 +57,6 @@ pub struct TimeRecord {
     pub completion_time_ms: u64,
     pub timestamp: u64, // ledger timestamp (seconds)
     pub replay_hash: BytesN<32>,
-}
-
-/// A leaderboard snapshot for a given time period.
-///
-/// - `period`: The aggregation window for this leaderboard (for example, daily or all-time).
-/// - `records`: The ordered list of `TimeRecord` entries currently on the leaderboard.
-/// - `last_reset`: The ledger timestamp (in seconds) when this leaderboard was last reset.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Leaderboard {
-    pub period: TimePeriod,
-    pub records: Vec<TimeRecord>,
-    pub last_reset: u64,
 }
 
 /// Pure logic classification for future "time bracket competitions".
@@ -96,8 +72,17 @@ pub enum TimeBracket {
 #[contract]
 pub struct TimeAttack;
 
+const LEDGER_THRESHOLD_SHARED: u32 = 518_400; // ~30 days @ 5s/ledger
+const LEDGER_BUMP_SHARED: u32 = 1_036_800; // ~60 days @ 5s/ledger
+
 #[contractimpl]
 impl TimeAttack {
+    fn bump_persistent_ttl(env: &Env, key: &DataKey) {
+        env.storage()
+            .persistent()
+            .extend_ttl(key, LEDGER_THRESHOLD_SHARED, LEDGER_BUMP_SHARED);
+    }
+
     pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
         let storage = env.storage().instance();
 
@@ -110,9 +95,6 @@ impl TimeAttack {
 
         // Store the admin address in contract storage
         storage.set(&DataKey::Admin, &admin);
-
-        // STUB: reward plumbing only (no payout logic yet)
-        storage.set(&DataKey::RewardAmount, &0_i128);
 
         Ok(())
     }
@@ -177,8 +159,8 @@ impl TimeAttack {
         Self::update_leaderboard(&env, scope, TimePeriod::Daily, &record)?;
         Self::update_leaderboard(&env, scope, TimePeriod::Weekly, &record)?;
 
-        // Update global best if this is a new record
-        Self::update_global_best(&env, scope, &record);
+        // Update all-time best for this scope (global or per-puzzle)
+        Self::update_alltime_best(&env, scope, &record);
 
         // Mark this submission timestamp for rate limiting (temporary storage)
         env.storage()
@@ -246,10 +228,7 @@ impl TimeAttack {
     }
 
     fn check_and_reset_leaderboards(env: &Env, scope: Scope, current_timestamp: u64) {
-        // Check and reset daily leaderboard
         Self::maybe_reset_period(env, scope, TimePeriod::Daily, 86_400, current_timestamp);
-
-        // Check and reset weekly leaderboard
         Self::maybe_reset_period(env, scope, TimePeriod::Weekly, 604_800, current_timestamp);
     }
 
@@ -262,34 +241,40 @@ impl TimeAttack {
     ) {
         let last_reset_key = DataKey::LastReset(scope, period);
 
-        // Get last reset time, default to current time if never reset
-        let last_reset: u64 = env
-            .storage()
-            .persistent()
-            .get(&last_reset_key)
-            .unwrap_or(current_timestamp);
+        // Init-on-first-use: first time we see this scope/period, record a baseline and exit.
+        let last_reset_opt: Option<u64> = env.storage().persistent().get(&last_reset_key);
+        let last_reset = match last_reset_opt {
+            Some(t) => t,
+            None => {
+                env.storage()
+                    .persistent()
+                    .set(&last_reset_key, &current_timestamp);
+                Self::bump_persistent_ttl(env, &last_reset_key);
+                return;
+            }
+        };
 
-        // Check if we need to reset
+        // Use saturating_sub to avoid underflow in weird timestamp scenarios.
         if current_timestamp.saturating_sub(last_reset) >= duration_seconds {
-            // Clear the leaderboard
+            // Clear the leaderboard.
             let board_key = DataKey::Board(scope, period);
-            let empty_board: Vec<TimeRecord> = Vec::new(env);
-            env.storage().persistent().set(&board_key, &empty_board);
+            env.storage()
+                .persistent()
+                .set(&board_key, &Vec::<TimeRecord>::new(env));
+            Self::bump_persistent_ttl(env, &board_key);
 
-            // Clear the best record
+            // Remove best record for this period.
             let best_key = DataKey::Best(scope, period);
             env.storage().persistent().remove(&best_key);
 
-            // Update last reset timestamp
+            // Update last reset timestamp.
             env.storage()
                 .persistent()
                 .set(&last_reset_key, &current_timestamp);
+            Self::bump_persistent_ttl(env, &last_reset_key);
 
-            // Emit reset event
-            env.events().publish(
-                (symbol_short!("LB_RESET"), scope, period),
-                current_timestamp,
-            );
+            env.events()
+                .publish((symbol_short!("LB_RESET"), scope, period), current_timestamp);
         }
     }
 
@@ -299,6 +284,8 @@ impl TimeAttack {
         period: TimePeriod,
         new_record: &TimeRecord,
     ) -> Result<(), Error> {
+        const MAX_LEADERBOARD_SIZE: u32 = 10;
+
         let board_key = DataKey::Board(scope, period);
 
         // Get current leaderboard or create empty one
@@ -307,9 +294,6 @@ impl TimeAttack {
             .persistent()
             .get(&board_key)
             .unwrap_or(Vec::new(env));
-
-        // Get max leaderboard size (default to 10)
-        let max_size: u32 = env.storage().instance().get(&DataKey::TopN).unwrap_or(10);
 
         // Insert record in sorted order (fastest time first)
         let mut inserted = false;
@@ -324,22 +308,23 @@ impl TimeAttack {
         }
 
         // If not inserted and board has room, add to end
-        if !inserted && leaderboard.len() < max_size {
+        if !inserted && leaderboard.len() < MAX_LEADERBOARD_SIZE {
             leaderboard.push_back(new_record.clone());
         }
 
         // Trim to max size
-        while leaderboard.len() > max_size {
+        while leaderboard.len() > MAX_LEADERBOARD_SIZE {
             leaderboard.pop_back();
         }
 
-        // Save updated leaderboard
         env.storage().persistent().set(&board_key, &leaderboard);
+        Self::bump_persistent_ttl(env, &board_key);
 
         Ok(())
     }
 
-    fn update_global_best(env: &Env, scope: Scope, record: &TimeRecord) {
+    // Renamed from `update_global_best` for clarity: this is per-scope all-time best.
+    fn update_alltime_best(env: &Env, scope: Scope, record: &TimeRecord) {
         let best_key = DataKey::Best(scope, TimePeriod::AllTime);
 
         let current_best: Option<TimeRecord> = env.storage().persistent().get(&best_key);
@@ -351,8 +336,8 @@ impl TimeAttack {
 
         if should_update {
             env.storage().persistent().set(&best_key, record);
+            Self::bump_persistent_ttl(env, &best_key);
 
-            // Emit world record event
             env.events().publish(
                 (symbol_short!("NEW_BEST"), scope),
                 (record.player.clone(), record.completion_time_ms),
@@ -396,47 +381,18 @@ impl TimeAttack {
         };
 
         let board_key = DataKey::Board(scope, period);
-        env.storage()
+        let board: Vec<TimeRecord> = env
+            .storage()
             .persistent()
             .get(&board_key)
-            .unwrap_or(Vec::new(&env))
-    }
+            .unwrap_or(Vec::new(&env));
 
-    /// STUB: configure a future world-record reward amount (admin only).
-    pub fn set_reward_amount(
-        env: Env,
-        admin: Address,
-        world_record_reward: i128,
-    ) -> Result<(), Error> {
-        admin.require_auth();
-
-        let stored_admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(Error::ContractNotInitialized)?;
-
-        if admin != stored_admin {
-            return Err(Error::NotAuthorized);
+        // Extend TTL when reading (good practice)
+        if !board.is_empty() {
+            Self::bump_persistent_ttl(&env, &board_key);
         }
 
-        if world_record_reward < 0 {
-            return Err(Error::InvalidRewardAmount);
-        }
-
-        env.storage()
-            .instance()
-            .set(&DataKey::RewardAmount, &world_record_reward);
-
-        Ok(())
-    }
-
-    /// STUB: read configured reward amount. Defaults to 0 if unset.
-    pub fn get_reward_amount(env: Env) -> i128 {
-        env.storage()
-            .instance()
-            .get(&DataKey::RewardAmount)
-            .unwrap_or(0)
+        board
     }
 
     /// Pure mapping: completion time (ms) -> bracket (no storage).
@@ -469,10 +425,13 @@ impl TimeAttack {
 
 #[cfg(test)]
 mod test {
+    // Dev checks:
+    // - cargo test -p time_attack
+    // - cargo clippy --all-targets -p time_attack -- -D warnings
     use super::*;
     use soroban_sdk::{
         testutils::{Address as _, Ledger},
-        Env,
+        Address, BytesN, Env,
     };
 
     #[test]
@@ -642,7 +601,7 @@ mod test {
     }
 
     #[test]
-    fn test_reward_amount_stub_defaults_and_setter() {
+    fn test_daily_board_resets_after_24h() {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -652,11 +611,41 @@ mod test {
         let admin = Address::generate(&env);
         client.initialize(&admin);
 
-        // defaults to 0 (stub)
-        assert_eq!(client.get_reward_amount(), 0);
+        let player1 = Address::generate(&env);
+        let player2 = Address::generate(&env);
 
-        // admin can set
-        client.set_reward_amount(&admin, &123_i128);
-        assert_eq!(client.get_reward_amount(), 123);
+        // Submit first time
+        client.submit_time(
+            &player1,
+            &1u32,
+            &100_000u64,
+            &BytesN::from_array(&env, &[1u8; 32]),
+        );
+
+        // Check daily leaderboard has 1 entry
+        let daily_board = client.get_leaderboard(&1u32, &TimePeriod::Daily);
+        assert_eq!(daily_board.len(), 1);
+
+        // Advance time by 24 hours + 1 second (86401 seconds)
+        env.ledger().with_mut(|li| {
+            li.timestamp += 86_401;
+        });
+
+        // Submit second time (should trigger reset)
+        client.submit_time(
+            &player2,
+            &1u32,
+            &120_000u64,
+            &BytesN::from_array(&env, &[2u8; 32]),
+        );
+
+        // Check daily leaderboard was reset and now has only 1 entry (player2)
+        let daily_board_after_reset = client.get_leaderboard(&1u32, &TimePeriod::Daily);
+        assert_eq!(daily_board_after_reset.len(), 1);
+        assert_eq!(daily_board_after_reset.get(0).unwrap().player, player2);
+
+        // AllTime board should still have both
+        let alltime_board = client.get_leaderboard(&1u32, &TimePeriod::AllTime);
+        assert_eq!(alltime_board.len(), 2);
     }
 }
