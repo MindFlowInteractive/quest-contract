@@ -1,0 +1,16 @@
+[package]
+name = "vesting"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "vesting"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = "21.7.7"
+soroban-token-sdk = "21.7.7"
+
+[dev-dependencies]
+soroban-sdk = { version = "21.7.7", features = ["testutils"] }
