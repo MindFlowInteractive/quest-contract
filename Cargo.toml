@@ -23,6 +23,7 @@ members = [
   "contracts/bounty", "contracts/vesting",
   "contracts/bounty",
   "contracts/insurance",
+  "contracts/skill_rating",
 ]
 
 [workspace.dependencies]
