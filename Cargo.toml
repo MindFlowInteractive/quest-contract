@@ -20,9 +20,10 @@ members = [
   "contracts/staking",
   "contracts/time_attack",
   "contracts/tournament",
-  "contracts/bounty", "contracts/vesting",
   "contracts/bounty",
+  "contracts/vesting",
   "contracts/insurance",
+  "contracts/governance",
 ]
 
 [workspace.dependencies]

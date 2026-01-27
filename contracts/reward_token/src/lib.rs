@@ -100,15 +100,16 @@ impl RewardToken {
     }
 
     /// Mint new tokens (admin or authorized minter only)
-    pub fn mint(env: Env, to: Address, amount: i128) {
+    pub fn mint(env: Env, minter: Address, to: Address, amount: i128) {
         if amount <= 0 {
             panic!("Amount must be positive");
         }
 
-        // Check if caller is authorized
-        if !Self::is_authorized_minter(env.clone(), to.clone()) {
-            let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
-            admin.require_auth();
+        minter.require_auth();
+
+        // Check if minter is authorized
+        if !Self::is_authorized_minter(env.clone(), minter.clone()) {
+            panic!("Not authorized");
         }
 
         let balance = Self::balance(env.clone(), to.clone());
@@ -158,7 +159,7 @@ impl RewardToken {
     }
 
     /// Transfer tokens
-    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) -> bool {
+    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
         from.require_auth();
 
         if amount <= 0 {
@@ -178,12 +179,10 @@ impl RewardToken {
         env.storage()
             .instance()
             .set(&DataKey::Balance(to), &(to_balance + amount));
-
-        true
     }
 
     /// Approve spender to spend tokens on behalf of owner
-    pub fn approve(env: Env, owner: Address, spender: Address, amount: i128) -> bool {
+    pub fn approve(env: Env, owner: Address, spender: Address, amount: i128) {
         owner.require_auth();
 
         if amount < 0 {
@@ -193,8 +192,6 @@ impl RewardToken {
         env.storage()
             .instance()
             .set(&DataKey::Allowance(owner, spender), &amount);
-
-        true
     }
 
     /// Transfer tokens from one address to another using allowance
@@ -204,7 +201,7 @@ impl RewardToken {
         from: Address,
         to: Address,
         amount: i128,
-    ) -> bool {
+    ) {
         spender.require_auth();
 
         if amount <= 0 {
@@ -235,8 +232,6 @@ impl RewardToken {
         env.storage()
             .instance()
             .set(&DataKey::Allowance(from, spender), &(allowance - amount));
-
-        true
     }
 
     /// Spend tokens for in-game unlocks (burn tokens)
@@ -245,7 +240,7 @@ impl RewardToken {
         spender: Address,
         amount: i128,
         _unlock_type: String,
-    ) -> bool {
+    ) {
         spender.require_auth();
 
         if amount <= 0 {
@@ -271,12 +266,10 @@ impl RewardToken {
         env.storage()
             .instance()
             .set(&DataKey::TotalSupply, &(total_supply - amount));
-
-        true
     }
 
     /// Burn tokens (reduce total supply)
-    pub fn burn(env: Env, from: Address, amount: i128) -> bool {
+    pub fn burn(env: Env, from: Address, amount: i128) {
         from.require_auth();
 
         if amount <= 0 {
@@ -300,8 +293,6 @@ impl RewardToken {
         env.storage()
             .instance()
             .set(&DataKey::TotalSupply, &(total_supply - amount));
-
-        true
     }
 
     /// Get balance of an account
@@ -375,7 +366,7 @@ mod test {
 
         env.mock_all_auths();
 
-        client.mint(&user, &1000);
+        client.mint(&admin, &user, &1000);
 
         assert_eq!(client.balance(&user), 1000);
         assert_eq!(client.total_supply(), 1000);
@@ -400,7 +391,7 @@ mod test {
 
         env.mock_all_auths();
 
-        client.mint(&user1, &1000);
+        client.mint(&admin, &user1, &1000);
         client.transfer(&user1, &user2, &300);
 
         assert_eq!(client.balance(&user1), 700);
@@ -427,7 +418,7 @@ mod test {
 
         env.mock_all_auths();
 
-        client.mint(&owner, &1000);
+        client.mint(&admin, &owner, &1000);
         client.approve(&owner, &spender, &500);
 
         assert_eq!(client.allowance(&owner, &spender), 500);
@@ -457,7 +448,7 @@ mod test {
 
         env.mock_all_auths();
 
-        client.mint(&user, &1000);
+        client.mint(&admin, &user, &1000);
         client.burn(&user, &300);
 
         assert_eq!(client.balance(&user), 700);
@@ -482,7 +473,7 @@ mod test {
 
         env.mock_all_auths();
 
-        client.mint(&player, &1000);
+        client.mint(&admin, &player, &1000);
         client.spend_for_unlock(&player, &250, &String::from_str(&env, "level_unlock"));
 
         assert_eq!(client.balance(&player), 750);
@@ -574,7 +565,7 @@ mod test {
 
         env.mock_all_auths();
 
-        client.mint(&user1, &100);
+        client.mint(&admin, &user1, &100);
         client.transfer(&user1, &user2, &200);
     }
 }
