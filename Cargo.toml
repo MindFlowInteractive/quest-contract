@@ -23,6 +23,7 @@ members = [
   "contracts/bounty",
   "contracts/vesting",
   "contracts/insurance",
+  "contracts/skill_rating",
   "contracts/governance",
 ]
 
