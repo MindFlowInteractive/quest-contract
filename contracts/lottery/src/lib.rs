@@ -64,6 +64,11 @@ pub enum DataKey {
     Randomness(u32),
 }
 
+// Please note:
+// Soroban does not yet support native VRF.
+// This implementation uses hash-based pseudo-randomness
+// suitable for MVP and educational use.
+
 
 #[contract]
 pub struct LotteryContract;
@@ -188,4 +193,15 @@ pub fn cancel_round(env: Env) {
 
     round.status = RoundStatus::Cancelled;
     env.storage().persistent().set(&DataKey::Round(round_id), &round);
+}
+
+pub fn refund(env: Env, round_id: u32, user: Address) {
+    let round = get_round(env.clone(), round_id);
+    assert!(round.status == RoundStatus::Cancelled);
+
+    // transfer ticket cost back
+}
+
+pub fn get_round (env:Env, round_id: u32) -> LotteryRound {
+    env.storage().persistent().get(&DataKey::CurrentRound).unwrap()
 }
