@@ -14,9 +14,9 @@ optimize:
 	soroban contract optimize --wasm target/wasm32-unknown-unknown/release/*.wasm
 
 deploy-testnet:
-	@echo "Deploying to testnet..."
+	@echo "Deploying puzzle factory to testnet..."
 	soroban contract deploy \
-		--wasm target/wasm32-unknown-unknown/release/achievement_nft.wasm \
+		--wasm target/wasm32v1-none/release/puzzle_factory.wasm \
 		--source deployer \
 		--network testnet
 
