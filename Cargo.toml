@@ -26,6 +26,8 @@ members = [
   "contracts/whitelist",
   "contracts/skill_rating",
   "contracts/governance",
+  "contracts/lottery",
+
 ]
 
 [workspace.dependencies]
