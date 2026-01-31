@@ -333,6 +333,52 @@ fn test_listing_expiration() {
 }
 
 #[test]
+#[should_panic(expected = "Listing has expired")]
+fn test_buy_expired_listing() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // Setup token
+    let token_admin = Address::generate(&env);
+    let token_contract_id = env.register_stellar_asset_contract_v2(token_admin.clone()).address();
+    let token_admin_client = token::StellarAssetClient::new(&env, &token_contract_id);
+
+    // Setup marketplace
+    let contract_id = env.register_contract(None, HintMarketplace);
+    let client = HintMarketplaceClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &admin, &250, &3600, &86400 * 30, &500, &HintQuality::Good);
+
+    // Create hint and listing
+    let creator = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    let content_hash = create_test_content_hash(&env);
+    let hint_id = client.create_hint(&creator, &1u32, &content_hash, &HintQuality::Good);
+
+    // Set timestamp
+    env.ledger().set_timestamp(1000);
+
+    let listing_id = client.create_listing(
+        &creator,
+        &hint_id,
+        &token_contract_id,
+        &1000,
+        &3600, // 1 hour duration
+        &500,
+    );
+
+    // Mint tokens to buyer
+    token_admin_client.mint(&buyer, &10000);
+
+    // Move time forward past expiration
+    env.ledger().set_timestamp(5000);
+
+    // Try to buy expired listing - should panic
+    client.buy(&buyer, &listing_id);
+}
+
+#[test]
 fn test_dynamic_pricing() {
     let env = Env::default();
     env.mock_all_auths();
