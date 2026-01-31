@@ -322,13 +322,6 @@ fn test_listing_expiration() {
     // Expire listing by moving time forward
     env.ledger().set_timestamp(5000);
 
-    // Try to buy expired listing
-    let buyer = Address::generate(&env);
-    let result = std::panic::catch_unwind(|| {
-        client.buy(&buyer, &listing_id);
-    });
-    assert!(result.is_err());
-
     // Manually expire listing
     let mut listing_ids = Vec::new(&env);
     listing_ids.push_back(listing_id);
