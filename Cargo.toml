@@ -29,6 +29,7 @@ members = [
   "contracts/governance",
   "contracts/lottery",
   "contracts/seasonal_event",
+  "contracts/hint_marketplace",
 ]
 
 [workspace.dependencies]
