@@ -1,12 +1,6 @@
 #![no_std]
-<<<<<<< Updated upstream
-use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
-};
-=======
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
->>>>>>> Stashed changes
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String, Vec};
 
 #[contracttype]
 #[derive(Clone)]
@@ -42,7 +36,6 @@ impl AchievementNFT {
         env.storage().instance().set(&DataKey::TotalSupply, &0u32);
     }
 
-<<<<<<< Updated upstream
     /// Admin function to mark a puzzle as completed for a user.
     pub fn mark_puzzle_completed(env: Env, user: Address, puzzle_id: u32) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
@@ -51,11 +44,23 @@ impl AchievementNFT {
             .persistent()
             .set(&DataKey::PuzzleCompleted(user, puzzle_id), &true);
     }
-=======
-    /// Mint a new achievement NFT
+
+    /// Mint a new achievement NFT (requires that the puzzle was previously marked completed).
     pub fn mint(env: Env, to: Address, puzzle_id: u32, metadata: String) -> u32 {
         to.require_auth();
->>>>>>> Stashed changes
+
+        let completed: bool = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PuzzleCompleted(to.clone(), puzzle_id))
+            .unwrap_or(false);
+
+        if !completed {
+            panic!("Puzzle not completed");
+        }
+
+        Self::mint_internal(env, to, puzzle_id, metadata)
+    }
 
     /// Mint a new NFT for crafting purposes (testnet: no auth required).
     pub fn craftmint(env: Env, to: Address, puzzle_id: u32, metadata: String) -> u32 {
@@ -63,6 +68,10 @@ impl AchievementNFT {
         // let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         // admin.require_auth();
 
+        Self::mint_internal(env, to, puzzle_id, metadata)
+    }
+
+    fn mint_internal(env: Env, to: Address, puzzle_id: u32, metadata: String) -> u32 {
         let token_id: u32 = env.storage().instance().get(&DataKey::NextTokenId).unwrap();
 
         let achievement = Achievement {
@@ -82,7 +91,9 @@ impl AchievementNFT {
         collection.push_back(token_id);
         let collection_key = DataKey::OwnerCollection(to.clone());
         env.storage().persistent().set(&collection_key, &collection);
-        env.storage().persistent().extend_ttl(&collection_key, 100_000, 500_000);
+        env.storage()
+            .persistent()
+            .extend_ttl(&collection_key, 100_000, 500_000);
 
         // Update Counters
         env.storage().instance().set(&DataKey::NextTokenId, &(token_id + 1));
@@ -90,7 +101,8 @@ impl AchievementNFT {
         env.storage().instance().set(&DataKey::TotalSupply, &(total + 1));
 
         // Emit Event
-        env.events().publish((symbol_short!("minted"), to.clone()), token_id);
+        env.events()
+            .publish((symbol_short!("minted"), to.clone()), token_id);
 
         token_id
     }
@@ -184,6 +196,29 @@ impl AchievementNFT {
     /// Returns full achievement details.
     pub fn get_achievement(env: Env, token_id: u32) -> Option<Achievement> {
         env.storage().persistent().get(&DataKey::Achievement(token_id))
+    }
+
+    /// Returns unique puzzle IDs owned by `owner` (derived from achievement NFTs).
+    pub fn puzzle_ids_of(env: Env, owner: Address) -> Vec<u32> {
+        let token_ids = Self::get_collection(env.clone(), owner);
+        let mut puzzles = Vec::new(&env);
+
+        for tid in token_ids.iter() {
+            let token_id = tid.clone();
+            if let Some(a) = Self::get_achievement(env.clone(), token_id) {
+                if !puzzles.contains(&a.puzzle_id) {
+                    puzzles.push_back(a.puzzle_id);
+                }
+            }
+        }
+
+        puzzles
+    }
+
+    /// True if `owner` owns an achievement NFT whose `puzzle_id` equals `puzzle_id`.
+    pub fn has_puzzle(env: Env, owner: Address, puzzle_id: u32) -> bool {
+        let puzzles = Self::puzzle_ids_of(env, owner);
+        puzzles.contains(&puzzle_id)
     }
 }
 
