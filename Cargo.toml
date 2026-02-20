@@ -4,6 +4,7 @@ members = [
   "contracts/subscription", 
   "contracts/achievement_collection",
   "contracts/achievement_nft",
+  "contracts/achievement_sets",
   "contracts/auction",
   "contracts/bridge",
   "contracts/crafting",
@@ -15,6 +16,7 @@ members = [
   "contracts/oracle",
   "contracts/puzzle_verification",
   "contracts/puzzle_insurance",
+  "contracts/quest_chain",
   "contracts/referral",
   "contracts/reputation",
   "contracts/reward_token",
@@ -22,7 +24,7 @@ members = [
   "contracts/time_attack",
   "contracts/tournament",
   "contracts/bounty",
-
+  "contracts/charity_donation",
   "contracts/vesting",
   "contracts/insurance",
   "contracts/whitelist",
@@ -30,6 +32,7 @@ members = [
   "contracts/governance",
   "contracts/lottery",
   "contracts/seasonal_event",
+  "contracts/hint_marketplace",
 ]
 
 [workspace.dependencies]
