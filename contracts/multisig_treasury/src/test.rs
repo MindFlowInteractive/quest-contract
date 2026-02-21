@@ -4,33 +4,28 @@ use super::*;
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env, String, Symbol, IntoVal, Vec};
 
-fn setup_env() -> (Env, Address) {
+fn setup_env() -> Env {
     let env = Env::default();
-    let owner = Address::generate(&env);
-    
-    // Mock authorization for owner
     env.mock_all_auths();
-    
-    (env, owner)
-}
-
-fn initialize_contract(env: &Env, owner: &Address) {
-    MultisigTreasury::initialize(
-        env.clone(),
-        owner.clone(),
-        2,                  // threshold: 2 signatures required
-        86400,              // proposal_timeout: 24 hours
-        10,                 // max_pending_proposals: 10
-    );
+    env
 }
 
 #[test]
 fn test_initialization() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
     
-    let config = MultisigTreasury::get_config_info(env.clone());
+    client.initialize(
+        &owner,
+        &2,                  // threshold: 2 signatures required
+        &86400,              // proposal_timeout: 24 hours
+        &10,                 // max_pending_proposals: 10
+    );
+    
+    let config = client.get_config_info();
     assert_eq!(config.owner, owner);
     assert_eq!(config.threshold, 2);
     assert_eq!(config.total_signers, 1);
@@ -39,13 +34,13 @@ fn test_initialization() {
     assert!(config.emergency_recovery_enabled);
     
     // Check owner is member
-    let member = MultisigTreasury::get_member_info(env.clone(), owner).unwrap();
+    let member = client.get_member_info(&owner).unwrap();
     assert_eq!(member.address, owner);
     assert!(matches!(member.role, Role::Owner));
     assert!(member.active);
     
     // Check members list
-    let members = MultisigTreasury::get_all_members(env.clone());
+    let members = client.get_all_members();
     assert_eq!(members.len(), 1);
     assert_eq!(members.get(0).unwrap(), owner);
 }
