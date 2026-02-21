@@ -1,0 +1,5 @@
+target/
+Cargo.lock
+*.wasm
+*.optimized.wasm
+.prediction_market_*_contract_id
