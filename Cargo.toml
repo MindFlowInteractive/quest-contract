@@ -29,12 +29,14 @@ members = [
   "contracts/vesting",
   "contracts/insurance",
   "contracts/whitelist",
+  "contracts/anti_bot",
   "contracts/skill_rating",
   "contracts/governance",
   "contracts/lottery",
   "contracts/prize_pool",
   "contracts/seasonal_event",
   "contracts/hint_marketplace",
+  "contracts/multisig_treasury",
 ]
 
 [workspace.dependencies]
