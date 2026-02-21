@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, Address, Env, String, Symbol, Val, Vec, symbol_short};
+use soroban_sdk::{contract, contractimpl, Address, Env, String, Symbol, Val, Vec, symbol_short, FromVal, IntoVal};
 use soroban_sdk::token::Client as TokenClient;
 
 mod storage;

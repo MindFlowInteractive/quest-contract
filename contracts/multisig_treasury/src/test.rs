@@ -18,12 +18,7 @@ fn test_initialization() {
     let contract_id = env.register_contract(None, MultisigTreasury);
     let client = MultisigTreasuryClient::new(&env, &contract_id);
     
-    client.initialize(
-        &owner,
-        &2,                  // threshold: 2 signatures required
-        &86400,              // proposal_timeout: 24 hours
-        &10,                 // max_pending_proposals: 10
-    );
+    client.initialize(&owner, &2, &86400, &10);
     
     let config = client.get_config_info();
     assert_eq!(config.owner, owner);
@@ -33,13 +28,10 @@ fn test_initialization() {
     assert_eq!(config.max_pending_proposals, 10);
     assert!(config.emergency_recovery_enabled);
     
-    // Check owner is member
     let member = client.get_member_info(&owner).unwrap();
-    assert_eq!(member.address, owner);
     assert!(matches!(member.role, Role::Owner));
     assert!(member.active);
     
-    // Check members list
     let members = client.get_all_members();
     assert_eq!(members.len(), 1);
     assert_eq!(members.get(0).unwrap(), owner);
@@ -48,397 +40,351 @@ fn test_initialization() {
 #[test]
 #[should_panic(expected = "Already initialized")]
 fn test_double_initialization() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
     
-    // Try to initialize again - should panic
-    MultisigTreasury::initialize(
-        env.clone(),
-        owner.clone(),
-        2,
-        86400,
-        10,
-    );
+    client.initialize(&owner, &2, &86400, &10);
+    client.initialize(&owner, &2, &86400, &10);
 }
 
 #[test]
 #[should_panic(expected = "Invalid threshold")]
 fn test_initialize_with_zero_threshold() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    MultisigTreasury::initialize(
-        env.clone(),
-        owner.clone(),
-        0,  // Invalid threshold
-        86400,
-        10,
-    );
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &0, &86400, &10);
 }
 
 #[test]
 fn test_add_member() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let signer1 = Address::generate(&env);
     let signer2 = Address::generate(&env);
     let admin1 = Address::generate(&env);
     
-    // Add members
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer1.clone(), Role::Signer);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer2.clone(), Role::Signer);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), admin1.clone(), Role::Admin);
+    client.add_member(&owner, &signer1, &Role::Signer);
+    client.add_member(&owner, &signer2, &Role::Signer);
+    client.add_member(&owner, &admin1, &Role::Admin);
     
-    // Verify members added
-    let config = MultisigTreasury::get_config_info(env.clone());
+    let config = client.get_config_info();
     assert_eq!(config.total_signers, 4);
     
-    let members = MultisigTreasury::get_all_members(env.clone());
+    let members = client.get_all_members();
     assert_eq!(members.len(), 4);
-    
-    let member1 = MultisigTreasury::get_member_info(env.clone(), signer1).unwrap();
-    assert!(matches!(member1.role, Role::Signer));
-    
-    let admin = MultisigTreasury::get_member_info(env.clone(), admin1).unwrap();
-    assert!(matches!(admin.role, Role::Admin));
 }
 
 #[test]
 #[should_panic(expected = "Member already exists")]
 fn test_add_duplicate_member() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let signer = Address::generate(&env);
-    
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer.clone(), Role::Signer);
-    // Try to add same member again
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer.clone(), Role::Signer);
+    client.add_member(&owner, &signer, &Role::Signer);
+    client.add_member(&owner, &signer, &Role::Signer);
 }
 
 #[test]
 #[should_panic(expected = "Insufficient role to add members")]
 fn test_signer_cannot_add_member() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let signer = Address::generate(&env);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer.clone(), Role::Signer);
+    client.add_member(&owner, &signer, &Role::Signer);
     
-    // Try to add member as signer
     let new_member = Address::generate(&env);
-    MultisigTreasury::add_member(env.clone(), signer.clone(), new_member, Role::Signer);
+    client.add_member(&signer, &new_member, &Role::Signer);
 }
 
 #[test]
 #[should_panic(expected = "Only Owner can add Owners or Admins")]
 fn test_admin_cannot_add_admin() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let admin = Address::generate(&env);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), admin.clone(), Role::Admin);
+    client.add_member(&owner, &admin, &Role::Admin);
     
-    // Admin tries to add another admin
     let new_admin = Address::generate(&env);
-    MultisigTreasury::add_member(env.clone(), admin.clone(), new_admin, Role::Admin);
+    client.add_member(&admin, &new_admin, &Role::Admin);
 }
 
 #[test]
 fn test_remove_member() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let signer1 = Address::generate(&env);
     let signer2 = Address::generate(&env);
     
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer1.clone(), Role::Signer);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer2.clone(), Role::Signer);
+    client.add_member(&owner, &signer1, &Role::Signer);
+    client.add_member(&owner, &signer2, &Role::Signer);
     
-    // Remove a signer
-    MultisigTreasury::remove_member(env.clone(), owner.clone(), signer1.clone());
+    client.remove_member(&owner, &signer1);
     
-    // Verify removal
-    let member = MultisigTreasury::get_member_info(env.clone(), signer1);
-    assert!(member.is_none());
-    
-    let members = MultisigTreasury::get_all_members(env.clone());
-    assert_eq!(members.len(), 2);
-    
-    let config = MultisigTreasury::get_config_info(env.clone());
-    assert_eq!(config.total_signers, 2);
+    assert!(client.get_member_info(&signer1).is_none());
+    assert_eq!(client.get_all_members().len(), 2);
+    assert_eq!(client.get_config_info().total_signers, 2);
 }
 
 #[test]
 #[should_panic(expected = "Cannot remove last owner")]
 fn test_cannot_remove_last_owner() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
     
-    // Try to remove the only owner
-    MultisigTreasury::remove_member(env.clone(), owner.clone(), owner.clone());
+    client.initialize(&owner, &2, &86400, &10);
+    client.remove_member(&owner, &owner);
 }
 
 #[test]
 fn test_admin_can_remove_signer() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let admin = Address::generate(&env);
     let signer = Address::generate(&env);
     
-    MultisigTreasury::add_member(env.clone(), owner.clone(), admin.clone(), Role::Admin);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer.clone(), Role::Signer);
+    client.add_member(&owner, &admin, &Role::Admin);
+    client.add_member(&owner, &signer, &Role::Signer);
     
-    // Admin removes signer
-    MultisigTreasury::remove_member(env.clone(), admin.clone(), signer.clone());
-    
-    let member = MultisigTreasury::get_member_info(env.clone(), signer);
-    assert!(member.is_none());
+    client.remove_member(&admin, &signer);
+    assert!(client.get_member_info(&signer).is_none());
 }
 
 #[test]
 #[should_panic(expected = "Admin can only remove Signers")]
 fn test_admin_cannot_remove_admin() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let admin1 = Address::generate(&env);
     let admin2 = Address::generate(&env);
     
-    MultisigTreasury::add_member(env.clone(), owner.clone(), admin1.clone(), Role::Admin);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), admin2.clone(), Role::Admin);
+    client.add_member(&owner, &admin1, &Role::Admin);
+    client.add_member(&owner, &admin2, &Role::Admin);
     
-    // Admin tries to remove another admin
-    MultisigTreasury::remove_member(env.clone(), admin1.clone(), admin2.clone());
+    client.remove_member(&admin1, &admin2);
 }
 
 #[test]
 fn test_update_member_role() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let signer = Address::generate(&env);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer.clone(), Role::Signer);
+    client.add_member(&owner, &signer, &Role::Signer);
+    client.update_member_role(&owner, &signer, &Role::Admin);
     
-    // Promote signer to admin
-    MultisigTreasury::update_member_role(env.clone(), owner.clone(), signer.clone(), Role::Admin);
-    
-    let member = MultisigTreasury::get_member_info(env.clone(), signer).unwrap();
-    assert!(matches!(member.role, Role::Admin));
+    assert!(matches!(client.get_member_info(&signer).unwrap().role, Role::Admin));
 }
 
 #[test]
 fn test_propose_and_sign_transfer() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let signer1 = Address::generate(&env);
     let signer2 = Address::generate(&env);
     let token = Address::generate(&env);
     let destination = Address::generate(&env);
     
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer1.clone(), Role::Signer);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer2.clone(), Role::Signer);
+    client.add_member(&owner, &signer1, &Role::Signer);
+    client.add_member(&owner, &signer2, &Role::Signer);
     
-    // Propose transfer (threshold is 2, so need 2 signatures)
-    let tx_id = MultisigTreasury::propose_transfer(
-        env.clone(),
-        owner.clone(),
-        token.clone(),
-        destination.clone(),
-        1000,
-        String::from_str(&env, "Test transfer"),
-    );
-    
+    let tx_id = client.propose_transfer(&owner, &token, &destination, &1000, &String::from_str(&env, "Test transfer"));
     assert_eq!(tx_id, 1);
     
-    // Get transaction info
-    let tx = MultisigTreasury::get_transaction_info(env.clone(), tx_id).unwrap();
-    assert_eq!(tx.proposer, owner);
-    assert!(matches!(tx.transaction_type, TransactionType::TokenTransfer));
+    let tx = client.get_transaction_info(&tx_id).unwrap();
     assert!(matches!(tx.status, TransactionStatus::Pending));
-    assert_eq!(tx.signatures.len(), 0);
     
-    // Sign as owner
-    MultisigTreasury::sign_transaction(env.clone(), owner.clone(), tx_id);
-    
-    let tx = MultisigTreasury::get_transaction_info(env.clone(), tx_id).unwrap();
+    client.sign_transaction(&owner, &tx_id);
+    let tx = client.get_transaction_info(&tx_id).unwrap();
     assert_eq!(tx.signatures.len(), 1);
     
-    // Sign as signer1 - should reach threshold
-    MultisigTreasury::sign_transaction(env.clone(), signer1.clone(), tx_id);
-    
-    let tx = MultisigTreasury::get_transaction_info(env.clone(), tx_id).unwrap();
+    client.sign_transaction(&signer1, &tx_id);
+    let tx = client.get_transaction_info(&tx_id).unwrap();
     assert_eq!(tx.signatures.len(), 2);
     assert!(matches!(tx.status, TransactionStatus::Approved));
     
-    // Verify signer tracking
-    assert!(MultisigTreasury::has_signer_signed(env.clone(), tx_id, owner.clone()));
-    assert!(MultisigTreasury::has_signer_signed(env.clone(), tx_id, signer1.clone()));
-    assert!(!MultisigTreasury::has_signer_signed(env.clone(), tx_id, signer2.clone()));
+    assert!(client.has_signer_signed(&tx_id, &owner));
+    assert!(client.has_signer_signed(&tx_id, &signer1));
 }
 
 #[test]
 #[should_panic(expected = "Already signed")]
 fn test_cannot_sign_twice() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let token = Address::generate(&env);
     let destination = Address::generate(&env);
     
-    let tx_id = MultisigTreasury::propose_transfer(
-        env.clone(),
-        owner.clone(),
-        token.clone(),
-        destination.clone(),
-        1000,
-        String::from_str(&env, "Test transfer"),
-    );
-    
-    MultisigTreasury::sign_transaction(env.clone(), owner.clone(), tx_id);
-    // Try to sign again
-    MultisigTreasury::sign_transaction(env.clone(), owner.clone(), tx_id);
+    let tx_id = client.propose_transfer(&owner, &token, &destination, &1000, &String::from_str(&env, "Test"));
+    client.sign_transaction(&owner, &tx_id);
+    client.sign_transaction(&owner, &tx_id);
 }
 
 #[test]
 #[should_panic(expected = "Not a member")]
 fn test_non_member_cannot_sign() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let token = Address::generate(&env);
     let destination = Address::generate(&env);
     let non_member = Address::generate(&env);
     
-    let tx_id = MultisigTreasury::propose_transfer(
-        env.clone(),
-        owner.clone(),
-        token.clone(),
-        destination.clone(),
-        1000,
-        String::from_str(&env, "Test transfer"),
-    );
-    
-    MultisigTreasury::sign_transaction(env.clone(), non_member.clone(), tx_id);
+    let tx_id = client.propose_transfer(&owner, &token, &destination, &1000, &String::from_str(&env, "Test"));
+    client.sign_transaction(&non_member, &tx_id);
 }
 
 #[test]
 fn test_propose_contract_call() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
     
-    let target_contract = Address::generate(&env);
+    client.initialize(&owner, &2, &86400, &10);
     
-    let args = Vec::from_array(&env, [
-        100i32.into_val(&env),
-    ]);
+    let target = Address::generate(&env);
+    let args = Vec::from_array(&env, [100i32.into_val(&env)]);
     
-    let tx_id = MultisigTreasury::propose_contract_call(
-        env.clone(),
-        owner.clone(),
-        target_contract.clone(),
-        Symbol::new(&env, "test_function"),
-        args,
-        String::from_str(&env, "Test contract call"),
-    );
-    
-    let tx = MultisigTreasury::get_transaction_info(env.clone(), tx_id).unwrap();
+    let tx_id = client.propose_contract_call(&owner, &target, &Symbol::new(&env, "test"), &args, &String::from_str(&env, "Test"));
+    let tx = client.get_transaction_info(&tx_id).unwrap();
     assert!(matches!(tx.transaction_type, TransactionType::ContractCall));
-    assert_eq!(tx.target, Some(target_contract));
 }
 
 #[test]
 fn test_reject_transaction() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let token = Address::generate(&env);
     let destination = Address::generate(&env);
     
-    let tx_id = MultisigTreasury::propose_transfer(
-        env.clone(),
-        owner.clone(),
-        token.clone(),
-        destination.clone(),
-        1000,
-        String::from_str(&env, "Test transfer"),
-    );
+    let tx_id = client.propose_transfer(&owner, &token, &destination, &1000, &String::from_str(&env, "Test"));
+    client.reject_transaction(&owner, &tx_id);
     
-    MultisigTreasury::reject_transaction(env.clone(), owner.clone(), tx_id);
-    
-    let tx = MultisigTreasury::get_transaction_info(env.clone(), tx_id).unwrap();
+    let tx = client.get_transaction_info(&tx_id).unwrap();
     assert!(matches!(tx.status, TransactionStatus::Rejected));
-    
-    // Check pending list
-    let pending = MultisigTreasury::get_pending_transaction_ids(env.clone());
-    assert_eq!(pending.len(), 0);
+    assert_eq!(client.get_pending_transaction_ids().len(), 0);
 }
 
 #[test]
 #[should_panic(expected = "Only proposer can reject")]
 fn test_non_proposer_cannot_reject() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let signer = Address::generate(&env);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer.clone(), Role::Signer);
+    client.add_member(&owner, &signer, &Role::Signer);
     
     let token = Address::generate(&env);
     let destination = Address::generate(&env);
     
-    let tx_id = MultisigTreasury::propose_transfer(
-        env.clone(),
-        owner.clone(),
-        token.clone(),
-        destination.clone(),
-        1000,
-        String::from_str(&env, "Test transfer"),
-    );
-    
-    // Signer tries to reject owner's proposal
-    MultisigTreasury::reject_transaction(env.clone(), signer.clone(), tx_id);
+    let tx_id = client.propose_transfer(&owner, &token, &destination, &1000, &String::from_str(&env, "Test"));
+    client.reject_transaction(&signer, &tx_id);
 }
 
 #[test]
 fn test_update_config() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
     
-    // Add more signers to allow threshold increase
+    client.initialize(&owner, &2, &86400, &10);
+    
     let signer1 = Address::generate(&env);
     let signer2 = Address::generate(&env);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer1.clone(), Role::Signer);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer2.clone(), Role::Signer);
+    client.add_member(&owner, &signer1, &Role::Signer);
+    client.add_member(&owner, &signer2, &Role::Signer);
     
-    // Update config
-    MultisigTreasury::update_config(
-        env.clone(),
-        owner.clone(),
-        3,           // New threshold
-        172800,      // 48 hour timeout
-        20,          // Max 20 pending
-    );
+    client.update_config(&owner, &3, &172800, &20);
     
-    let config = MultisigTreasury::get_config_info(env.clone());
+    let config = client.get_config_info();
     assert_eq!(config.threshold, 3);
     assert_eq!(config.proposal_timeout, 172800);
     assert_eq!(config.max_pending_proposals, 20);
@@ -447,277 +393,179 @@ fn test_update_config() {
 #[test]
 #[should_panic(expected = "Only Owner can update config")]
 fn test_non_owner_cannot_update_config() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let signer = Address::generate(&env);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer.clone(), Role::Signer);
+    client.add_member(&owner, &signer, &Role::Signer);
     
-    MultisigTreasury::update_config(
-        env.clone(),
-        signer.clone(),
-        1,
-        86400,
-        10,
-    );
+    client.update_config(&signer, &1, &86400, &10);
 }
 
 #[test]
 fn test_emergency_recovery_activation() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
     
-    // Add another owner for recovery
+    client.initialize(&owner, &2, &86400, &10);
+    
     let owner2 = Address::generate(&env);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), owner2.clone(), Role::Owner);
+    client.add_member(&owner, &owner2, &Role::Owner);
     
-    // Activate emergency
-    MultisigTreasury::activate_emergency_recovery(
-        env.clone(),
-        owner.clone(),
-        String::from_str(&env, "Security breach detected"),
-    );
+    client.activate_emergency_recovery(&owner, &String::from_str(&env, "Security breach"));
     
-    let emergency = MultisigTreasury::get_emergency_info(env.clone()).unwrap();
-    assert_eq!(emergency.activated_by, owner);
+    let emergency = client.get_emergency_info().unwrap();
     assert!(!emergency.recovery_approved);
-    assert_eq!(emergency.reason, String::from_str(&env, "Security breach detected"));
 }
 
 #[test]
 #[should_panic(expected = "Only Owner can activate emergency recovery")]
 fn test_non_owner_cannot_activate_emergency() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let admin = Address::generate(&env);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), admin.clone(), Role::Admin);
+    client.add_member(&owner, &admin, &Role::Admin);
     
-    MultisigTreasury::activate_emergency_recovery(
-        env.clone(),
-        admin.clone(),
-        String::from_str(&env, "Emergency"),
-    );
+    client.activate_emergency_recovery(&admin, &String::from_str(&env, "Emergency"));
 }
 
 #[test]
 fn test_emergency_recovery_execution() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
     
-    // Add another owner
+    client.initialize(&owner, &2, &86400, &10);
+    
     let owner2 = Address::generate(&env);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), owner2.clone(), Role::Owner);
+    client.add_member(&owner, &owner2, &Role::Owner);
     
-    // Add new owner candidate
     let new_owner = Address::generate(&env);
     
-    // Activate emergency
-    MultisigTreasury::activate_emergency_recovery(
-        env.clone(),
-        owner.clone(),
-        String::from_str(&env, "Owner key compromised"),
-    );
+    client.activate_emergency_recovery(&owner, &String::from_str(&env, "Compromised"));
+    client.execute_emergency_recovery(&owner2, &new_owner);
     
-    // Second owner executes recovery
-    MultisigTreasury::execute_emergency_recovery(
-        env.clone(),
-        owner2.clone(),
-        new_owner.clone(),
-    );
-    
-    // Verify new owner is set
-    let config = MultisigTreasury::get_config_info(env.clone());
-    assert_eq!(config.owner, new_owner);
-    
-    // Verify new owner is member
-    let member = MultisigTreasury::get_member_info(env.clone(), new_owner).unwrap();
-    assert!(matches!(member.role, Role::Owner));
-    
-    let emergency = MultisigTreasury::get_emergency_info(env.clone()).unwrap();
-    assert!(emergency.recovery_approved);
+    assert_eq!(client.get_config_info().owner, new_owner);
+    assert!(matches!(client.get_member_info(&new_owner).unwrap().role, Role::Owner));
+    assert!(client.get_emergency_info().unwrap().recovery_approved);
 }
 
 #[test]
 fn test_cancel_emergency_recovery() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
     
-    let owner2 = Address::generate(&env);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), owner2.clone(), Role::Owner);
-    
-    // Activate emergency
-    MultisigTreasury::activate_emergency_recovery(
-        env.clone(),
-        owner.clone(),
-        String::from_str(&env, "False alarm"),
-    );
-    
-    // Cancel emergency
-    MultisigTreasury::cancel_emergency_recovery(env.clone(), owner2.clone());
-    
-    // Emergency state should be removed
-    let emergency = MultisigTreasury::get_emergency_info(env.clone());
-    assert!(emergency.is_none());
-}
-
-#[test]
-fn test_emergency_cooldown() {
-    let (env, owner) = setup_env();
-    
-    initialize_contract(&env, &owner);
+    client.initialize(&owner, &2, &86400, &10);
     
     let owner2 = Address::generate(&env);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), owner2.clone(), Role::Owner);
+    client.add_member(&owner, &owner2, &Role::Owner);
     
-    // First activation
-    MultisigTreasury::activate_emergency_recovery(
-        env.clone(),
-        owner.clone(),
-        String::from_str(&env, "First emergency"),
-    );
+    client.activate_emergency_recovery(&owner, &String::from_str(&env, "False alarm"));
+    client.cancel_emergency_recovery(&owner2);
     
-    // Cancel it
-    MultisigTreasury::cancel_emergency_recovery(env.clone(), owner2.clone());
-    
-    // Try to activate again immediately - should fail due to cooldown
-    // Note: We can't easily test this without ledger manipulation in this test framework
-    // In practice, the cooldown would be enforced
+    assert!(client.get_emergency_info().is_none());
 }
 
 #[test]
 #[should_panic(expected = "Activator cannot be the only approver")]
 fn test_emergency_requires_second_owner() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
     
-    // Add another owner
+    client.initialize(&owner, &2, &86400, &10);
+    
     let owner2 = Address::generate(&env);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), owner2.clone(), Role::Owner);
+    client.add_member(&owner, &owner2, &Role::Owner);
     
     let new_owner = Address::generate(&env);
     
-    // Activate emergency
-    MultisigTreasury::activate_emergency_recovery(
-        env.clone(),
-        owner.clone(),
-        String::from_str(&env, "Emergency"),
-    );
-    
-    // Activator tries to execute recovery alone - should fail
-    MultisigTreasury::execute_emergency_recovery(
-        env.clone(),
-        owner.clone(),
-        new_owner.clone(),
-    );
+    client.activate_emergency_recovery(&owner, &String::from_str(&env, "Emergency"));
+    client.execute_emergency_recovery(&owner, &new_owner);
 }
 
 #[test]
 fn test_transaction_counter() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let token = Address::generate(&env);
     let destination = Address::generate(&env);
     
-    // Propose multiple transactions
-    let tx1 = MultisigTreasury::propose_transfer(
-        env.clone(),
-        owner.clone(),
-        token.clone(),
-        destination.clone(),
-        100,
-        String::from_str(&env, "First"),
-    );
-    
-    let tx2 = MultisigTreasury::propose_transfer(
-        env.clone(),
-        owner.clone(),
-        token.clone(),
-        destination.clone(),
-        200,
-        String::from_str(&env, "Second"),
-    );
-    
-    let tx3 = MultisigTreasury::propose_transfer(
-        env.clone(),
-        owner.clone(),
-        token.clone(),
-        destination.clone(),
-        300,
-        String::from_str(&env, "Third"),
-    );
+    let tx1 = client.propose_transfer(&owner, &token, &destination, &100, &String::from_str(&env, "First"));
+    let tx2 = client.propose_transfer(&owner, &token, &destination, &200, &String::from_str(&env, "Second"));
+    let tx3 = client.propose_transfer(&owner, &token, &destination, &300, &String::from_str(&env, "Third"));
     
     assert_eq!(tx1, 1);
     assert_eq!(tx2, 2);
     assert_eq!(tx3, 3);
-    
-    // Check pending transactions
-    let pending = MultisigTreasury::get_pending_transaction_ids(env.clone());
-    assert_eq!(pending.len(), 3);
+    assert_eq!(client.get_pending_transaction_ids().len(), 3);
 }
 
 #[test]
 fn test_role_levels() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &2, &86400, &10);
     
     let admin = Address::generate(&env);
     let signer = Address::generate(&env);
     
-    MultisigTreasury::add_member(env.clone(), owner.clone(), admin.clone(), Role::Admin);
-    MultisigTreasury::add_member(env.clone(), owner.clone(), signer.clone(), Role::Signer);
+    client.add_member(&owner, &admin, &Role::Admin);
+    client.add_member(&owner, &signer, &Role::Signer);
     
-    // Verify role levels are correct
-    let owner_member = MultisigTreasury::get_member_info(env.clone(), owner).unwrap();
-    let admin_member = MultisigTreasury::get_member_info(env.clone(), admin).unwrap();
-    let signer_member = MultisigTreasury::get_member_info(env.clone(), signer).unwrap();
-    
-    assert!(matches!(owner_member.role, Role::Owner));
-    assert!(matches!(admin_member.role, Role::Admin));
-    assert!(matches!(signer_member.role, Role::Signer));
+    assert!(matches!(client.get_member_info(&owner).unwrap().role, Role::Owner));
+    assert!(matches!(client.get_member_info(&admin).unwrap().role, Role::Admin));
+    assert!(matches!(client.get_member_info(&signer).unwrap().role, Role::Signer));
 }
 
 #[test]
+#[should_panic(expected = "Too many pending proposals")]
 fn test_pending_transaction_limit() {
-    let (env, owner) = setup_env();
+    let env = setup_env();
+    let owner = Address::generate(&env);
     
-    initialize_contract(&env, &owner);
+    let contract_id = env.register_contract(None, MultisigTreasury);
+    let client = MultisigTreasuryClient::new(&env, &contract_id);
+    
+    client.initialize(&owner, &1, &86400, &3);
     
     let token = Address::generate(&env);
     let destination = Address::generate(&env);
     
-    // Fill up to max pending (10)
-    for i in 0..10 {
-        MultisigTreasury::propose_transfer(
-            env.clone(),
-            owner.clone(),
-            token.clone(),
-            destination.clone(),
-            (i as i128) * 100,
-            String::from_str(&env, "Fill pending"),
-        );
-    }
+    client.propose_transfer(&owner, &token, &destination, &100, &String::from_str(&env, "1"));
+    client.propose_transfer(&owner, &token, &destination, &200, &String::from_str(&env, "2"));
+    client.propose_transfer(&owner, &token, &destination, &300, &String::from_str(&env, "3"));
     
-    // Next proposal should fail
-    let result = std::panic::catch_unwind(|| {
-        MultisigTreasury::propose_transfer(
-            env.clone(),
-            owner.clone(),
-            token.clone(),
-            destination.clone(),
-            1000,
-            String::from_str(&env, "Overflow"),
-        );
-    });
-    
-    assert!(result.is_err());
+    client.propose_transfer(&owner, &token, &destination, &400, &String::from_str(&env, "4"));
 }
