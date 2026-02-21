@@ -5,7 +5,9 @@ members = [
   "contracts/achievement_collection",
   "contracts/achievement_nft",
   "contracts/fractional_nft",
+  "contracts/achievement_sets",
   "contracts/auction",
+  "contracts/battle_pass",
   "contracts/bridge",
   "contracts/crafting",
   "contracts/daily_rewards",
@@ -15,6 +17,8 @@ members = [
   "contracts/lending",
   "contracts/oracle",
   "contracts/puzzle_verification",
+  "contracts/puzzle_insurance",
+  "contracts/quest_chain",
   "contracts/referral",
   "contracts/reputation",
   "contracts/reward_token",
@@ -22,18 +26,21 @@ members = [
   "contracts/time_attack",
   "contracts/tournament",
   "contracts/bounty",
-
+  "contracts/charity_donation",
   "contracts/vesting",
   "contracts/insurance",
   "contracts/whitelist",
   "contracts/skill_rating",
   "contracts/governance",
   "contracts/lottery",
+  "contracts/prize_pool",
   "contracts/seasonal_event",
+  "contracts/hint_marketplace",
 ]
 
 [workspace.dependencies]
-soroban-sdk = "21.0.0"
+# Enable test utilities for test builds across workspace
+soroban-sdk = { version = "21.0.0", features = ["testutils"] }
 
 [profile.release]
 opt-level = "z"

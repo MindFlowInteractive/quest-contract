@@ -1,16 +1,18 @@
 [package]
-name = "achievement-nft"
+name = "achievement-sets"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+achievement-nft = { path = "../achievement_nft", features = ["testutils"] }
+reward-token = { path = "../reward_token", features = ["testutils"] }
 
 [features]
 testutils = ["soroban-sdk/testutils"]
