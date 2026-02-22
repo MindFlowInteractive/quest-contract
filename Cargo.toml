@@ -37,6 +37,7 @@ members = [
   "contracts/prize_pool",
   "contracts/seasonal_event",
   "contracts/hint_marketplace",
+  "contracts/puzzle_rental",
   "contracts/social_tipping",
   "contracts/nft_wrapper",
 ]
