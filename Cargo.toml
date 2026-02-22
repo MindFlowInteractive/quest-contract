@@ -36,6 +36,8 @@ members = [
   "contracts/seasonal_event",
   "contracts/hint_marketplace",
   "contracts/dynamic_nft",
+  "contracts/social_tipping",
+  "contracts/nft_wrapper",
 ]
 
 [workspace.dependencies]
