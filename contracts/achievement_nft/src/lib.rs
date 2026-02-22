@@ -1,5 +1,8 @@
 #![no_std]
 
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short, Address, Env, String, Vec,
+};
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env, String, Vec};
 
 #[contracttype]
@@ -36,15 +39,21 @@ impl AchievementNFT {
         env.storage().instance().set(&DataKey::TotalSupply, &0u32);
     }
 
+    /// Mark a puzzle as completed by a user.
     /// Admin function to mark a puzzle as completed for a user.
     pub fn mark_puzzle_completed(env: Env, user: Address, puzzle_id: u32) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
+        let key = DataKey::PuzzleCompleted(user.clone(), puzzle_id);
         env.storage()
             .persistent()
-            .set(&DataKey::PuzzleCompleted(user, puzzle_id), &true);
+            .set(&key, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, 100_000, 500_000);
     }
 
+    /// Mint a new achievement NFT
     /// Mint a new achievement NFT (requires that the puzzle was previously marked completed).
     pub fn mint(env: Env, to: Address, puzzle_id: u32, metadata: String) -> u32 {
         to.require_auth();
@@ -59,6 +68,7 @@ impl AchievementNFT {
             panic!("Puzzle not completed");
         }
 
+        Self::craftmint(env, to, puzzle_id, metadata)
         Self::mint_internal(env, to, puzzle_id, metadata)
     }
 

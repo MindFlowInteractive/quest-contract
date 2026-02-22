@@ -4,6 +4,7 @@ members = [
   "contracts/subscription", 
   "contracts/achievement_collection",
   "contracts/achievement_nft",
+  "contracts/fractional_nft",
   "contracts/achievement_sets",
   "contracts/auction",
   "contracts/battle_pass",
@@ -29,6 +30,7 @@ members = [
   "contracts/vesting",
   "contracts/insurance",
   "contracts/whitelist",
+  "contracts/anti_bot",
   "contracts/skill_rating",
   "contracts/governance",
   "contracts/lottery",
@@ -36,6 +38,8 @@ members = [
   "contracts/seasonal_event",
   "contracts/hint_marketplace",
   "contracts/puzzle_rental",
+  "contracts/social_tipping",
+  "contracts/nft_wrapper",
 ]
 
 [workspace.dependencies]
