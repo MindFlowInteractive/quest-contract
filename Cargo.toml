@@ -37,13 +37,14 @@ members = [
   "contracts/prize_pool",
   "contracts/seasonal_event",
   "contracts/hint_marketplace",
+  "contracts/yield_farming",
   "contracts/social_tipping",
   "contracts/nft_wrapper",
 ]
 
 [workspace.dependencies]
 # Enable test utilities for test builds across workspace
-soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+soroban-sdk = "21.0.0"
 
 [profile.release]
 opt-level = "z"
