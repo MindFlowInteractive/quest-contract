@@ -34,6 +34,7 @@ members = [
   "contracts/skill_rating",
   "contracts/governance",
   "contracts/lottery",
+  "contracts/puzzle_lottery",
   "contracts/prize_pool",
   "contracts/seasonal_event",
   "contracts/hint_marketplace",
