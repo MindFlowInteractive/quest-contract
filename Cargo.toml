@@ -37,6 +37,7 @@ members = [
   "contracts/puzzle_lottery",
   "contracts/prize_pool",
   "contracts/seasonal_event",
+  "contracts/flash_loan",
   "contracts/hint_marketplace",
   "contracts/token_burn",
   "contracts/reward_vault",
