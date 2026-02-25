@@ -40,6 +40,7 @@ members = [
   "contracts/puzzle_dao",
   "contracts/flash_loan",
   "contracts/hint_marketplace",
+  "contracts/prediction_market",
   "contracts/yield_farming",
   "contracts/token_burn",
   "contracts/reward_vault",
