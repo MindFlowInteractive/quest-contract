@@ -58,6 +58,7 @@ members = [
   "contracts/emergency_pause",
   "contracts/tournament_prize_pool",
   "contracts/loyalty_points",
+  "contracts/payment_splitter",
 ]
 
 [workspace.dependencies]
