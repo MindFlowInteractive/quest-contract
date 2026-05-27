@@ -1,10 +1,42 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, Address, Env, Symbol, Vec,
+    contract, contractimpl, contracterror, contracttype, symbol_short, token, Address, Env, Symbol, Vec,
 };
 
 //
+// ──────────────────────────────────────────────────────────
+// ERRORS
+// ──────────────────────────────────────────────────────────
+//
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum QuestChainError {
+    AlreadyInitialized = 1,
+    TooFewQuests = 2,
+    TooManyQuests = 3,
+    MaxChainsReached = 4,
+    ChainNotActive = 5,
+    ChainNotStarted = 6,
+    ChainExpired = 7,
+    ChainAlreadyStarted = 8,
+    QuestNotFound = 9,
+    QuestAlreadyCompleted = 10,
+    QuestNotUnlocked = 11,
+    NoCheckpointAvailable = 12,
+    NoProgressToReset = 13,
+    RewardTokenNotConfigured = 14,
+    NoPendingRewards = 15,
+    InsufficientRewardPool = 16,
+    AmountMustBePositive = 17,
+    AdminOnly = 18,
+    DuplicateQuestId = 19,
+    InvalidPrerequisite = 20,
+    InvalidBranch = 21,
+}
+
 // ──────────────────────────────────────────────────────────
 // DATA STRUCTURES
 // ──────────────────────────────────────────────────────────
@@ -144,7 +176,7 @@ impl QuestChainContract {
         admin.require_auth();
 
         if env.storage().persistent().has(&DataKey::Config) {
-            panic!("Already initialized");
+            soroban_sdk::panic_with_error!(&env, QuestChainError::AlreadyInitialized);
         }
 
         let config = ChainConfig {
@@ -185,10 +217,10 @@ impl QuestChainContract {
         let config: ChainConfig = env.storage().persistent().get(&DataKey::Config).unwrap();
 
         if (quests.len() as u32) < config.min_quests_per_chain {
-            panic!("Too few quests");
+            soroban_sdk::panic_with_error!(&env, QuestChainError::TooFewQuests);
         }
         if (quests.len() as u32) > config.max_quests_per_chain {
-            panic!("Too many quests");
+            soroban_sdk::panic_with_error!(&env, QuestChainError::TooManyQuests);
         }
 
         // Validate quest structure
@@ -209,7 +241,7 @@ impl QuestChainContract {
         counter += 1;
 
         if counter > config.max_chains {
-            panic!("Max chains reached");
+            soroban_sdk::panic_with_error!(&env, QuestChainError::MaxChainsReached);
         }
 
         let chain = QuestChain {
@@ -262,19 +294,19 @@ impl QuestChainContract {
             .unwrap();
 
         if !chain.active {
-            panic!("Chain not active");
+            soroban_sdk::panic_with_error!(&env, QuestChainError::ChainNotActive);
         }
 
         // Check time limits
         let current_time = env.ledger().timestamp();
         if let Some(start) = chain.start_time {
             if current_time < start {
-                panic!("Chain not started yet");
+                soroban_sdk::panic_with_error!(&env, QuestChainError::ChainNotStarted);
             }
         }
         if let Some(end) = chain.end_time {
             if current_time > end {
-                panic!("Chain expired");
+                soroban_sdk::panic_with_error!(&env, QuestChainError::ChainExpired);
             }
         }
 
@@ -284,7 +316,7 @@ impl QuestChainContract {
             .persistent()
             .has(&DataKey::PlayerProgress(player.clone(), chain_id))
         {
-            panic!("Chain already started");
+            soroban_sdk::panic_with_error!(&env, QuestChainError::ChainAlreadyStarted);
         }
 
         // Initialize progress
@@ -321,7 +353,7 @@ impl QuestChainContract {
             .unwrap();
 
         if !chain.active {
-            panic!("Chain not active");
+            soroban_sdk::panic_with_error!(&env, QuestChainError::ChainNotActive);
         }
 
         let mut progress: PlayerProgress = env
@@ -333,13 +365,13 @@ impl QuestChainContract {
         // Verify quest exists and is unlockable
         let quest = Self::get_quest_by_id(&chain, quest_id);
         if quest.is_none() {
-            panic!("Quest not found");
+            soroban_sdk::panic_with_error!(&env, QuestChainError::QuestNotFound);
         }
         let quest = quest.unwrap();
 
         // Check if quest is already completed
         if progress.completed_quests.contains(&quest_id) {
-            panic!("Quest already completed");
+            soroban_sdk::panic_with_error!(&env, QuestChainError::QuestAlreadyCompleted);
         }
 
         // Check if quest is unlocked
@@ -351,7 +383,7 @@ impl QuestChainContract {
         let is_current = progress.current_quest == Some(quest_id);
         
         if !prerequisites_met && !branch_unlocked && !is_current {
-            panic!("Quest not unlocked");
+            soroban_sdk::panic_with_error!(&env, QuestChainError::QuestNotUnlocked);
         }
 
         // Mark quest as completed
@@ -436,7 +468,7 @@ impl QuestChainContract {
             .unwrap();
 
         if progress.checkpoint_quest.is_none() {
-            panic!("No checkpoint available");
+            soroban_sdk::panic_with_error!(&env, QuestChainError::NoCheckpointAvailable);
         }
 
         let checkpoint_id = progress.checkpoint_quest.unwrap();
@@ -521,7 +553,7 @@ impl QuestChainContract {
             .persistent()
             .has(&DataKey::PlayerProgress(player.clone(), chain_id))
         {
-            panic!("No progress to reset");
+            soroban_sdk::panic_with_error!(&env, QuestChainError::NoProgressToReset);
         }
 
         env.storage()
@@ -623,7 +655,7 @@ impl QuestChainContract {
         let config: ChainConfig = env.storage().persistent().get(&DataKey::Config).unwrap();
         let reward_token = match config.reward_token {
             Some(token) => token,
-            None => panic!("Reward token not configured"),
+            None => soroban_sdk::panic_with_error!(&env, QuestChainError::RewardTokenNotConfigured),
         };
 
         let pending: i128 = env
@@ -633,7 +665,7 @@ impl QuestChainContract {
             .unwrap_or(0);
 
         if pending <= 0 {
-            panic!("No pending rewards");
+            soroban_sdk::panic_with_error!(&env, QuestChainError::NoPendingRewards);
         }
 
         // Check reward pool has enough
@@ -644,7 +676,7 @@ impl QuestChainContract {
             .unwrap_or(0);
 
         if pool < pending {
-            panic!("Insufficient reward pool");
+            soroban_sdk::panic_with_error!(&env, QuestChainError::InsufficientRewardPool);
         }
 
         // Transfer rewards
@@ -734,13 +766,13 @@ impl QuestChainContract {
         Self::assert_admin(&env, &admin);
 
         if amount <= 0 {
-            panic!("Amount must be positive");
+            soroban_sdk::panic_with_error!(&env, QuestChainError::AmountMustBePositive);
         }
 
         let config: ChainConfig = env.storage().persistent().get(&DataKey::Config).unwrap();
         let reward_token = match config.reward_token {
             Some(token) => token,
-            None => panic!("Reward token not configured"),
+            None => soroban_sdk::panic_with_error!(&env, QuestChainError::RewardTokenNotConfigured),
         };
 
         // Transfer tokens from admin to contract
@@ -768,7 +800,7 @@ impl QuestChainContract {
     fn assert_admin(env: &Env, user: &Address) {
         let config: ChainConfig = env.storage().persistent().get(&DataKey::Config).unwrap();
         if config.admin != *user {
-            panic!("Admin only");
+            soroban_sdk::panic_with_error!(env, QuestChainError::AdminOnly);
         }
     }
 
@@ -777,7 +809,7 @@ impl QuestChainContract {
         let mut seen_ids = Vec::new(env);
         for quest in quests.iter() {
             if seen_ids.contains(&quest.id) {
-                panic!("Duplicate quest ID");
+                soroban_sdk::panic_with_error!(env, QuestChainError::DuplicateQuestId);
             }
             seen_ids.push_back(quest.id);
         }
@@ -793,7 +825,7 @@ impl QuestChainContract {
                     }
                 }
                 if !found {
-                    panic!("Invalid prerequisite");
+                    soroban_sdk::panic_with_error!(env, QuestChainError::InvalidPrerequisite);
                 }
             }
 
@@ -807,7 +839,7 @@ impl QuestChainContract {
                     }
                 }
                 if !found {
-                    panic!("Invalid branch");
+                    soroban_sdk::panic_with_error!(env, QuestChainError::InvalidBranch);
                 }
             }
         }

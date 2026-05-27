@@ -113,13 +113,13 @@ fn test_initialization() {
 }
 
 #[test]
-#[should_panic(expected = "Already initialized")]
+#[should_panic(expected = "Error(Contract, #1)")]
 fn test_double_initialization() {
     let env = Env::default();
     env.mock_all_auths();
 
     let (client, admin) = setup_contract(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 }
 
 #[test]
@@ -133,8 +133,8 @@ fn test_create_chain() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -144,7 +144,7 @@ fn test_create_chain() {
 
     let chain = client.get_chain(&chain_id);
     assert_eq!(chain.id, chain_id);
-    assert_eq!(chain.title, Symbol::new(&env, "Test Chain"));
+    assert_eq!(chain.title, Symbol::new(&env, "TestChain"));
     assert_eq!(chain.quests.len(), 5);
     assert_eq!(chain.total_reward, 1000); // 100 + 150 + 200 + 250 + 300
     assert!(chain.active);
@@ -164,8 +164,8 @@ fn test_create_time_limited_chain() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Time Limited"),
-        &Symbol::new(&env, "A time-limited chain"),
+        &Symbol::new(&env, "TimeLimited"),
+        &Symbol::new(&env, "TimeLimDesc"),
         &quests,
         &start_time,
         &end_time,
@@ -177,7 +177,7 @@ fn test_create_time_limited_chain() {
 }
 
 #[test]
-#[should_panic(expected = "Too few quests")]
+#[should_panic(expected = "Error(Contract, #2)")]
 fn test_create_chain_too_few_quests() {
     let env = Env::default();
     env.mock_all_auths();
@@ -188,7 +188,7 @@ fn test_create_chain_too_few_quests() {
     client.create_chain(
         &admin,
         &Symbol::new(&env, "Empty"),
-        &Symbol::new(&env, "Empty chain"),
+        &Symbol::new(&env, "EmptyDesc"),
         &empty_quests,
         &None,
         &None,
@@ -206,8 +206,8 @@ fn test_start_chain() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -225,7 +225,7 @@ fn test_start_chain() {
 }
 
 #[test]
-#[should_panic(expected = "Chain already started")]
+#[should_panic(expected = "Error(Contract, #8)")]
 fn test_start_chain_twice() {
     let env = Env::default();
     env.mock_all_auths();
@@ -236,8 +236,8 @@ fn test_start_chain_twice() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -249,7 +249,7 @@ fn test_start_chain_twice() {
 }
 
 #[test]
-#[should_panic(expected = "Chain not started yet")]
+#[should_panic(expected = "Error(Contract, #6)")]
 fn test_start_chain_before_start_time() {
     let env = Env::default();
     env.mock_all_auths();
@@ -260,8 +260,8 @@ fn test_start_chain_before_start_time() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &Some(2000u64),
         &None,
@@ -272,7 +272,7 @@ fn test_start_chain_before_start_time() {
 }
 
 #[test]
-#[should_panic(expected = "Chain expired")]
+#[should_panic(expected = "Error(Contract, #7)")]
 fn test_start_chain_after_end_time() {
     let env = Env::default();
     env.mock_all_auths();
@@ -283,8 +283,8 @@ fn test_start_chain_after_end_time() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &Some(1000u64),
         &Some(2000u64),
@@ -305,8 +305,8 @@ fn test_sequential_quest_completion() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -325,13 +325,14 @@ fn test_sequential_quest_completion() {
 
     // Complete quest 2
     client.complete_quest(&player, &chain_id, &2);
+    client.complete_quest(&player, &chain_id, &3);
     let progress = client.get_player_progress(&player, &chain_id).unwrap();
     assert_eq!(progress.completed_quests.len(), 2);
     assert_eq!(progress.total_reward_earned, 250); // 100 + 150
 }
 
 #[test]
-#[should_panic(expected = "Prerequisites not met")]
+#[should_panic(expected = "Error(Contract, #11)")]
 fn test_complete_quest_without_prerequisites() {
     let env = Env::default();
     env.mock_all_auths();
@@ -342,8 +343,8 @@ fn test_complete_quest_without_prerequisites() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -354,6 +355,7 @@ fn test_complete_quest_without_prerequisites() {
 
     // Try to complete quest 2 without completing quest 1
     client.complete_quest(&player, &chain_id, &2);
+    client.complete_quest(&player, &chain_id, &3);
 }
 
 #[test]
@@ -367,8 +369,8 @@ fn test_branching_paths() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -404,8 +406,8 @@ fn test_progress_checkpointing() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -421,6 +423,7 @@ fn test_progress_checkpointing() {
 
     // Complete quest 2 (no checkpoint)
     client.complete_quest(&player, &chain_id, &2);
+    client.complete_quest(&player, &chain_id, &3);
     let progress = client.get_player_progress(&player, &chain_id).unwrap();
     assert_eq!(progress.checkpoint_quest, Some(1)); // Still at quest 1
 
@@ -441,8 +444,8 @@ fn test_reset_to_checkpoint() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -455,6 +458,7 @@ fn test_reset_to_checkpoint() {
     client.complete_quest(&player, &chain_id, &1);
     // Complete quest 2
     client.complete_quest(&player, &chain_id, &2);
+    client.complete_quest(&player, &chain_id, &3);
     // Complete quest 3
     client.complete_quest(&player, &chain_id, &3);
 
@@ -473,7 +477,7 @@ fn test_reset_to_checkpoint() {
 }
 
 #[test]
-#[should_panic(expected = "No checkpoint available")]
+#[should_panic(expected = "Error(Contract, #12)")]
 fn test_reset_to_checkpoint_no_checkpoint() {
     let env = Env::default();
     env.mock_all_auths();
@@ -484,8 +488,8 @@ fn test_reset_to_checkpoint_no_checkpoint() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -509,8 +513,8 @@ fn test_reset_chain() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -520,6 +524,7 @@ fn test_reset_chain() {
     client.start_chain(&player, &chain_id);
     client.complete_quest(&player, &chain_id, &1);
     client.complete_quest(&player, &chain_id, &2);
+    client.complete_quest(&player, &chain_id, &3);
 
     // Reset entire chain
     client.reset_chain(&player, &chain_id);
@@ -539,8 +544,8 @@ fn test_chain_completion() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -552,6 +557,7 @@ fn test_chain_completion() {
     // Complete all quests sequentially
     client.complete_quest(&player, &chain_id, &1);
     client.complete_quest(&player, &chain_id, &2);
+    client.complete_quest(&player, &chain_id, &3);
     client.complete_quest(&player, &chain_id, &4);
     client.complete_quest(&player, &chain_id, &5);
 
@@ -575,8 +581,8 @@ fn test_cumulative_rewards() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -594,6 +600,7 @@ fn test_cumulative_rewards() {
     assert_eq!(progress.total_reward_earned, total_reward);
 
     client.complete_quest(&player, &chain_id, &2);
+    client.complete_quest(&player, &chain_id, &3);
     total_reward += 150;
     let progress = client.get_player_progress(&player, &chain_id).unwrap();
     assert_eq!(progress.total_reward_earned, total_reward);
@@ -620,8 +627,8 @@ fn test_leaderboard() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -633,6 +640,7 @@ fn test_leaderboard() {
     env.ledger().set_timestamp(1000);
     client.complete_quest(&player1, &chain_id, &1);
     client.complete_quest(&player1, &chain_id, &2);
+    client.complete_quest(&player1, &chain_id, &3);
     client.complete_quest(&player1, &chain_id, &4);
     client.complete_quest(&player1, &chain_id, &5);
 
@@ -651,6 +659,7 @@ fn test_leaderboard() {
     env.ledger().set_timestamp(3000);
     client.complete_quest(&player3, &chain_id, &1);
     client.complete_quest(&player3, &chain_id, &2);
+    client.complete_quest(&player3, &chain_id, &3);
     client.complete_quest(&player3, &chain_id, &4);
     client.complete_quest(&player3, &chain_id, &5);
 
@@ -677,8 +686,8 @@ fn test_multiple_players_same_chain() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -721,8 +730,8 @@ fn test_admin_functions() {
     let quests = create_test_quests(&env);
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -734,7 +743,7 @@ fn test_admin_functions() {
 }
 
 #[test]
-#[should_panic(expected = "Admin only")]
+#[should_panic(expected = "Error(Contract, #18)")]
 fn test_unauthorized_admin_action() {
     let env = Env::default();
     env.mock_all_auths();
@@ -746,7 +755,7 @@ fn test_unauthorized_admin_action() {
 }
 
 #[test]
-#[should_panic(expected = "Quest already completed")]
+#[should_panic(expected = "Error(Contract, #10)")]
 fn test_complete_quest_twice() {
     let env = Env::default();
     env.mock_all_auths();
@@ -757,8 +766,8 @@ fn test_complete_quest_twice() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -771,7 +780,7 @@ fn test_complete_quest_twice() {
 }
 
 #[test]
-#[should_panic(expected = "Quest not unlocked")]
+#[should_panic(expected = "Error(Contract, #11)")]
 fn test_complete_unlocked_quest() {
     let env = Env::default();
     env.mock_all_auths();
@@ -782,8 +791,8 @@ fn test_complete_unlocked_quest() {
 
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -824,8 +833,8 @@ fn test_pending_rewards_tracking() {
     let quests = create_test_quests(&env);
     let chain_id = client.create_chain(
         &admin,
-        &Symbol::new(&env, "Test Chain"),
-        &Symbol::new(&env, "A test quest chain"),
+        &Symbol::new(&env, "TestChain"),
+        &Symbol::new(&env, "TestDesc"),
         &quests,
         &None,
         &None,
@@ -843,6 +852,7 @@ fn test_pending_rewards_tracking() {
 
     // Complete quest 2
     client.complete_quest(&player, &chain_id, &2);
+    client.complete_quest(&player, &chain_id, &3);
     let pending = client.get_pending_rewards(&player, &chain_id);
     assert_eq!(pending, 250); // Quest 1 + Quest 2 rewards
 }
