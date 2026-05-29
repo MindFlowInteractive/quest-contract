@@ -29,6 +29,7 @@ pub struct Quest {
     pub prerequisites: Vec<u32>, // Quest IDs that must be completed first
     pub branches: Vec<u32>, // Alternative quest IDs (for branching paths)
     pub checkpoint: bool, // Whether this quest saves progress
+    pub expires_at: Option<u64>, // Optional expiry timestamp; None = no deadline
 }
 
 #[contracttype]
@@ -118,6 +119,7 @@ const MAX_LEADERBOARD_ENTRIES: u32 = 100;
 const CHAIN_CREATED: Symbol = symbol_short!("chain_crt");
 const QUEST_UNLOCKED: Symbol = symbol_short!("qst_unlck");
 const QUEST_COMPLETED: Symbol = symbol_short!("qst_done");
+const QUEST_EXPIRED: Symbol = symbol_short!("qst_exprd");
 const CHAIN_COMPLETED: Symbol = symbol_short!("chn_done");
 const PROGRESS_CHECKPOINT: Symbol = symbol_short!("checkpt");
 const CHAIN_RESET: Symbol = symbol_short!("chn_reset");
@@ -336,6 +338,18 @@ impl QuestChainContract {
             panic!("Quest not found");
         }
         let quest = quest.unwrap();
+
+        // Enforce quest expiry deadline
+        if let Some(expires_at) = quest.expires_at {
+            let current_time = env.ledger().timestamp();
+            if current_time >= expires_at {
+                env.events().publish(
+                    (QUEST_EXPIRED, player.clone()),
+                    (chain_id, quest_id, expires_at),
+                );
+                panic!("Quest: expired");
+            }
+        }
 
         // Check if quest is already completed
         if progress.completed_quests.contains(&quest_id) {
