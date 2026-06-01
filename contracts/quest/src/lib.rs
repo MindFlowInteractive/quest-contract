@@ -355,6 +355,25 @@ impl QuestContract {
         effective_reward
     }
 
+    /// Mark a quest as completed by `participant`.
+    ///
+    /// Sensitive: rejected while the contract is paused.
+    pub fn complete_quest(env: Env, participant: Address, quest_id: u64) {
+        require_not_paused(&env);
+        participant.require_auth();
+
+        let mut quest: Quest = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Quest(quest_id))
+            .unwrap_or_else(|| panic_with_error(&env, QuestError::QuestNotFound));
+
+        quest.status = QuestStatus::Completed;
+        save_quest(&env, &quest);
+
+        events::quest_completed(&env, quest_id, participant);
+    }
+
     /// Returns whether `participant` has already claimed the reward for
     /// `quest_id`.
     pub fn has_claimed(env: Env, participant: Address, quest_id: u64) -> bool {

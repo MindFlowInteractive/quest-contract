@@ -590,6 +590,31 @@ fn admin_can_pause_and_unpause() {
 
 #[test]
 #[should_panic(expected = "quest contract error")]
+fn non_admin_cannot_pause() {
+    let (env, _id, _admin, _creator, client) = setup_initialized();
+    let stranger = Address::generate(&env);
+
+    client.pause(&stranger);
+}
+
+#[test]
+fn create_quest_allowed_when_unpaused() {
+    let (env, _id, _admin, creator, client) = setup_initialized();
+
+    let quest_id = client.create_quest(
+        &creator,
+        &s(&env, "Title"),
+        &s(&env, "desc"),
+        &Vec::<String>::new(&env),
+        &10_i128,
+        &Difficulty::Easy,
+    );
+
+    assert_eq!(client.get_quest(&quest_id).status, QuestStatus::Active);
+}
+
+#[test]
+#[should_panic(expected = "quest contract error")]
 fn create_quest_blocked_while_paused() {
     let (env, _id, admin, creator, client) = setup_initialized();
     client.pause(&admin);
@@ -621,4 +646,43 @@ fn batch_create_blocked_while_paused() {
         },
     ];
     client.create_quest_batch(&creator, &inputs);
+}
+
+#[test]
+fn complete_quest_allowed_when_unpaused() {
+    let (env, _id, _admin, creator, client) = setup_initialized();
+    let player = Address::generate(&env);
+
+    let quest_id = client.create_quest(
+        &creator,
+        &s(&env, "Title"),
+        &s(&env, "desc"),
+        &Vec::<String>::new(&env),
+        &10_i128,
+        &Difficulty::Easy,
+    );
+
+    client.complete_quest(&player, &quest_id);
+
+    assert_eq!(client.get_quest(&quest_id).status, QuestStatus::Completed);
+}
+
+#[test]
+#[should_panic(expected = "quest contract error")]
+fn complete_quest_blocked_while_paused() {
+    let (env, _id, admin, creator, client) = setup_initialized();
+    let player = Address::generate(&env);
+
+    let quest_id = client.create_quest(
+        &creator,
+        &s(&env, "Title"),
+        &s(&env, "desc"),
+        &Vec::<String>::new(&env),
+        &10_i128,
+        &Difficulty::Easy,
+    );
+
+    client.pause(&admin);
+
+    client.complete_quest(&player, &quest_id);
 }
