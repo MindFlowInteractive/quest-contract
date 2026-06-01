@@ -29,6 +29,22 @@ pub enum QuestStatus {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TokenType {
+    Native,
+    ERC20,
+    ERC721,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Reward {
+    pub token_type: TokenType,
+    pub token_address: Option<Address>,
+    pub amount: i128, // Also used for tokenId in ERC721
+}
+
+#[contracttype]
 #[derive(Clone, Debug)]
 pub struct Quest {
     pub id: u64,
@@ -38,7 +54,7 @@ pub struct Quest {
     /// Categories/tags assigned to the quest at creation time
     /// (e.g. "combat", "exploration", "crafting").
     pub tags: Vec<String>,
-    pub reward: i128,
+    pub rewards: Vec<Reward>,
     pub status: QuestStatus,
     pub created_at: u64,
 }
@@ -157,7 +173,7 @@ impl QuestContract {
         title: String,
         description: String,
         tags: Vec<String>,
-        reward: i128,
+        rewards: Vec<Reward>,
     ) -> u64 {
         require_not_paused(&env);
         creator.require_auth();
@@ -184,7 +200,7 @@ impl QuestContract {
             title,
             description,
             tags: tags.clone(),
-            reward,
+            rewards,
             status: QuestStatus::Active,
             created_at: env.ledger().timestamp(),
         };
