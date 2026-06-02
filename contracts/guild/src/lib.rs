@@ -36,6 +36,9 @@ pub enum DataKey {
     Proposal(u32),             // Proposal
     ProposalCounter,           // u32
     Competition(u32),          // Competition
+    WithdrawalProposal(u32),   // WithdrawalProposal
+    WithdrawalProposalCounter, // u32
+    WithdrawalVoted(u32, Address), // bool
 }
 
 //
@@ -49,12 +52,25 @@ pub enum DataKey {
 pub struct GuildConfig {
     pub name: String,
     pub disbanded: bool,
+    pub withdrawal_threshold: i128,
 }
 
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct Proposal {
     pub id: u32,
+    pub yes: u32,
+    pub no: u32,
+    pub deadline: u64,
+    pub executed: bool,
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct WithdrawalProposal {
+    pub id: u32,
+    pub officer: Address,
+    pub amount: i128,
     pub yes: u32,
     pub no: u32,
     pub deadline: u64,
@@ -92,7 +108,7 @@ impl GuildContract {
 
         env.storage().persistent().set(
             &DataKey::Config,
-            &GuildConfig { name, disbanded: false },
+            &GuildConfig { name, disbanded: false, withdrawal_threshold: 10_000 },
         );
 
         env.storage().instance().set(&DataKey::TreasuryToken, &token_address);
@@ -133,10 +149,26 @@ impl GuildContract {
         client.transfer(&member, &env.current_contract_address(), &amount);
     }
 
-    pub fn withdraw(env: Env, officer: Address, amount: i128) {
+    pub fn withdraw(env: Env, officer: Address, amount: i128, deadline: Option<u64>) -> Option<u32> {
         officer.require_auth();
         Self::assert_officer_or_leader(&env, &officer);
         Self::assert_active(&env);
+
+        let config: GuildConfig = env.storage().persistent().get(&DataKey::Config).unwrap();
+        
+        if amount > config.withdrawal_threshold {
+            let mut id: u32 = env.storage().persistent().get(&DataKey::WithdrawalProposalCounter).unwrap_or(0);
+            id += 1;
+            let d = deadline.unwrap_or(env.ledger().timestamp() + 86400); // 24h default
+            
+            let wp = WithdrawalProposal {
+                id, officer, amount, yes: 0, no: 0, deadline: d, executed: false
+            };
+            
+            env.storage().persistent().set(&DataKey::WithdrawalProposal(id), &wp);
+            env.storage().persistent().set(&DataKey::WithdrawalProposalCounter, &id);
+            return Some(id);
+        }
 
         let token_addr: Address =
             env.storage().instance().get(&DataKey::TreasuryToken).unwrap();
@@ -148,6 +180,75 @@ impl GuildContract {
         }
 
         client.transfer(&env.current_contract_address(), &officer, &amount);
+        None
+    }
+
+    pub fn vote_withdrawal(env: Env, member: Address, proposal_id: u32, approve: bool) {
+        member.require_auth();
+        Self::assert_active(&env);
+
+        if Self::get_role(env.clone(), member.clone()).is_none() {
+            panic!("Not a member");
+        }
+
+        let voted_key = DataKey::WithdrawalVoted(proposal_id, member.clone());
+        if env.storage().persistent().has(&voted_key) {
+            panic!("Already voted");
+        }
+
+        let mut proposal: WithdrawalProposal = env.storage().persistent().get(&DataKey::WithdrawalProposal(proposal_id)).unwrap();
+
+        if env.ledger().timestamp() > proposal.deadline {
+            panic!("Voting closed");
+        }
+
+        if proposal.executed {
+            panic!("Already executed");
+        }
+
+        if approve {
+            proposal.yes += 1;
+        } else {
+            proposal.no += 1;
+        }
+
+        env.storage().persistent().set(&DataKey::WithdrawalProposal(proposal_id), &proposal);
+        env.storage().persistent().set(&voted_key, &true);
+    }
+
+    pub fn execute_withdrawal(env: Env, executor: Address, proposal_id: u32) {
+        executor.require_auth();
+        Self::assert_active(&env);
+
+        let mut proposal: WithdrawalProposal = env.storage().persistent().get(&DataKey::WithdrawalProposal(proposal_id)).unwrap();
+
+        if env.ledger().timestamp() > proposal.deadline {
+            panic!("Proposal expired");
+        }
+
+        if proposal.executed {
+            panic!("Already executed");
+        }
+
+        let members: Vec<Address> = env.storage().persistent().get(&DataKey::MembersList).unwrap();
+        let total_members = members.len() as u32;
+
+        if proposal.yes <= total_members / 2 {
+            panic!("Not enough approvals");
+        }
+
+        proposal.executed = true;
+        env.storage().persistent().set(&DataKey::WithdrawalProposal(proposal_id), &proposal);
+
+        let token_addr: Address = env.storage().instance().get(&DataKey::TreasuryToken).unwrap();
+        let client = token::Client::new(&env, &token_addr);
+
+        let balance = client.balance(&env.current_contract_address());
+        if balance < proposal.amount {
+            panic!("Insufficient funds");
+        }
+
+        client.transfer(&env.current_contract_address(), &proposal.officer, &proposal.amount);
     }
 
     // ───────────── SHARED RESOURCES ─────────────
