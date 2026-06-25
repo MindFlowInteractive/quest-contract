@@ -4,9 +4,29 @@ mod storage;
 #[cfg(test)]
 mod test;
 
-use soroban_sdk::{contract, contractimpl, Address, Env, Vec, symbol_short, BytesN, Symbol, IntoVal};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Vec, symbol_short, BytesN, Symbol, IntoVal};
 use soroban_sdk::token::Client as TokenClient;
 use crate::storage::*;
+
+#[contracttype]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum FlashChallengeError {
+    AlreadyInitialized = 1,
+    InvalidParameters = 2,
+    ChallengeNotFound = 3,
+    ChallengeNotActive = 4,
+    ChallengeNotStarted = 5,
+    ChallengeExpired = 6,
+    AlreadyWinner = 7,
+    IncorrectSolution = 8,
+    ChallengeNotEnded = 9,
+    AlreadyFinalized = 10,
+}
+
+fn panic_with_error(env: &Env, err: FlashChallengeError) -> ! {
+    env.events().publish(("flash_challenge_error",), err as u32);
+    panic!("flash challenge contract error");
+}
 
 #[contract]
 pub struct FlashChallengeContract;
@@ -15,7 +35,7 @@ pub struct FlashChallengeContract;
 impl FlashChallengeContract {
     pub fn initialize(env: Env, admin: Address, token: Address, oracle: Address) {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("Already initialized");
+            panic_with_error(&env, FlashChallengeError::AlreadyInitialized);
         }
         set_admin(&env, &admin);
         set_token_address(&env, &token);
@@ -34,7 +54,7 @@ impl FlashChallengeContract {
         admin.require_auth();
 
         if reward_pool <= 0 || max_winners == 0 || duration_minutes == 0 {
-            panic!("Invalid parameters");
+            panic_with_error(&env, FlashChallengeError::InvalidParameters);
         }
 
         let token = get_token_address(&env);
@@ -67,19 +87,19 @@ impl FlashChallengeContract {
     pub fn submit_solution(env: Env, challenge_id: u32, player: Address, solution_hash: BytesN<32>) {
         player.require_auth();
 
-        let mut challenge = get_challenge(&env, challenge_id).expect("Challenge not found");
+        let mut challenge = get_challenge(&env, challenge_id).unwrap_or_else(|| panic_with_error(&env, FlashChallengeError::ChallengeNotFound));
         
         if challenge.status == ChallengeStatus::Completed || challenge.status == ChallengeStatus::Expired {
-            panic!("Challenge not active");
+            panic_with_error(&env, FlashChallengeError::ChallengeNotActive);
         }
 
         let now = env.ledger().timestamp();
         if now < challenge.start_at {
-            panic!("Challenge hasn't started");
+            panic_with_error(&env, FlashChallengeError::ChallengeNotStarted);
         }
         
         if now > challenge.end_at {
-            panic!("Challenge expired");
+            panic_with_error(&env, FlashChallengeError::ChallengeExpired);
         }
         
         if challenge.status == ChallengeStatus::Scheduled {
@@ -87,7 +107,7 @@ impl FlashChallengeContract {
         }
 
         if challenge.winners.contains(&player) {
-            panic!("Already a winner");
+            panic_with_error(&env, FlashChallengeError::AlreadyWinner);
         }
 
         // Oracle verifies
@@ -99,7 +119,7 @@ impl FlashChallengeContract {
         );
 
         if !is_correct {
-            panic!("Incorrect solution");
+            panic_with_error(&env, FlashChallengeError::IncorrectSolution);
         }
 
         challenge.winners.push_back(player.clone());
@@ -127,15 +147,15 @@ impl FlashChallengeContract {
     }
     
     pub fn expire_challenge(env: Env, challenge_id: u32) {
-        let mut challenge = get_challenge(&env, challenge_id).expect("Challenge not found");
+        let mut challenge = get_challenge(&env, challenge_id).unwrap_or_else(|| panic_with_error(&env, FlashChallengeError::ChallengeNotFound));
         let now = env.ledger().timestamp();
         
         if now <= challenge.end_at {
-            panic!("Challenge has not ended yet");
+            panic_with_error(&env, FlashChallengeError::ChallengeNotEnded);
         }
         
         if challenge.status == ChallengeStatus::Completed || challenge.status == ChallengeStatus::Expired {
-            panic!("Already finalized");
+            panic_with_error(&env, FlashChallengeError::AlreadyFinalized);
         }
         
         challenge.status = ChallengeStatus::Expired;
@@ -164,7 +184,7 @@ impl FlashChallengeContract {
     }
 
     pub fn get_challenge(env: Env, id: u32) -> (ChallengeStatus, Vec<Address>, u64) {
-        let challenge = get_challenge(&env, id).expect("Not found");
+        let challenge = get_challenge(&env, id).unwrap_or_else(|| panic_with_error(&env, FlashChallengeError::ChallengeNotFound));
         let now = env.ledger().timestamp();
         let mut time_remaining = 0;
         
