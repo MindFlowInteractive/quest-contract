@@ -33,6 +33,7 @@ members = [
   "contracts/charity_donation",
   "contracts/community_grant",
   "contracts/vesting",
+  "contracts/vesting_schedule",
   "contracts/insurance",
   "contracts/whitelist",
   "contracts/anti_bot",
