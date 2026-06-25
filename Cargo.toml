@@ -82,6 +82,7 @@ members = [
   "contracts/oracle_price_feed",
   "contracts/event_ticket",
   "contracts/progressive_jackpot",
+    "contracts/proxy",
 ]
 
 [workspace.dependencies]
