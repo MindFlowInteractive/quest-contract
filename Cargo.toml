@@ -84,6 +84,7 @@ members = [
   "contracts/event_ticket",
   "contracts/progressive_jackpot",
   "contracts/rbac",
+    "contracts/proxy",
 ]
 
 [workspace.dependencies]

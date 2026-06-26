@@ -1,7 +1,27 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, token, Address, Env, IntoVal, Symbol, Val,
+    contract, contractimpl, contracttype, token, Address, Env, IntoVal, Symbol,
 };
+
+#[contracttype]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum AuctionError {
+    EndTimeMustBeAfterStartTime = 1,
+    AuctionNotFound = 2,
+    EnglishOnly = 3,
+    AuctionAlreadySettled = 4,
+    AuctionNotStarted = 5,
+    AuctionEnded = 6,
+    BidTooLow = 7,
+    DutchOnly = 8,
+    CurrentPriceHigherThanMax = 9,
+    AuctionStillOngoing = 10,
+}
+
+fn panic_with_error(env: &Env, err: AuctionError) -> ! {
+    env.events().publish(("auction_error",), err as u32);
+    panic!("auction contract error");
+}
 
 // 1. DATA STRUCTURES
 #[contracttype]
@@ -71,7 +91,7 @@ impl AuctionContract {
         seller.require_auth();
 
         if settings.end_time <= settings.start_time {
-            panic!("End time must be after start time");
+            panic_with_error(&env, AuctionError::EndTimeMustBeAfterStartTime);
         }
 
         // Generate ID
@@ -116,22 +136,22 @@ impl AuctionContract {
             .storage()
             .instance()
             .get(&DataKey::Auction(auction_id))
-            .unwrap();
+            .unwrap_or_else(|| panic_with_error(&env, AuctionError::AuctionNotFound));
 
         // 3. Validation Checks
         if auction.auction_type != AuctionType::English {
-            panic!("This function is for English auctions only");
+            panic_with_error(&env, AuctionError::EnglishOnly);
         }
         if auction.settled {
-            panic!("Auction is already settled");
+            panic_with_error(&env, AuctionError::AuctionAlreadySettled);
         }
 
         let current_time = env.ledger().timestamp();
         if current_time < auction.settings.start_time {
-            panic!("Auction has not started yet");
+            panic_with_error(&env, AuctionError::AuctionNotStarted);
         }
         if current_time > auction.settings.end_time {
-            panic!("Auction has ended");
+            panic_with_error(&env, AuctionError::AuctionEnded);
         }
 
         // 4. Price Logic & Refunds
@@ -141,7 +161,7 @@ impl AuctionContract {
             // CASE A: Outbidding someone
             // Check if bid is high enough (Current Bid + Increment)
             if bid_amount < auction.current_bid + auction.settings.min_bid_increment {
-                panic!("Bid too low: must meet min increment");
+                panic_with_error(&env, AuctionError::BidTooLow);
             }
 
             // Refund the previous bidder!
@@ -154,7 +174,7 @@ impl AuctionContract {
         } else {
             // CASE B: First bid of the auction
             if bid_amount < auction.settings.starting_price {
-                panic!("Bid below starting price");
+                panic_with_error(&env, AuctionError::BidTooLow);
             }
         }
 
@@ -209,14 +229,14 @@ impl AuctionContract {
             .storage()
             .instance()
             .get(&DataKey::Auction(auction_id))
-            .unwrap();
+            .unwrap_or_else(|| panic_with_error(&env, AuctionError::AuctionNotFound));
 
         // 1. Validation
         if auction.auction_type != AuctionType::Dutch {
-            panic!("This function is for Dutch auctions only");
+            panic_with_error(&env, AuctionError::DutchOnly);
         }
         if auction.settled {
-            panic!("Auction is already settled");
+            panic_with_error(&env, AuctionError::AuctionAlreadySettled);
         }
 
         // 2. Calculate Price
@@ -226,7 +246,7 @@ impl AuctionContract {
         // 3. Check Price Acceptability
         // The buyer says "I will pay up to X". If current price is higher, fail.
         if current_price > max_amount {
-            panic!("Current price is higher than your max limit");
+            panic_with_error(&env, AuctionError::CurrentPriceHigherThanMax);
         }
 
         // 4. Process Payment
@@ -250,16 +270,16 @@ impl AuctionContract {
             .storage()
             .instance()
             .get(&DataKey::Auction(auction_id))
-            .unwrap();
+            .unwrap_or_else(|| panic_with_error(&env, AuctionError::AuctionNotFound));
 
         if auction.settled {
-            panic!("Auction is already settled");
+            panic_with_error(&env, AuctionError::AuctionAlreadySettled);
         }
 
         // For English auctions, ensure time has passed
         if auction.auction_type == AuctionType::English {
             if env.ledger().timestamp() < auction.settings.end_time {
-                panic!("Auction is still ongoing");
+                panic_with_error(&env, AuctionError::AuctionStillOngoing);
             }
         }
 

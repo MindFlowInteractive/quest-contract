@@ -86,6 +86,8 @@ pub struct Quest {
     /// Categories/tags assigned to the quest at creation time.
     pub tags: Vec<String>,
     pub rewards: Vec<Reward>,
+    pub reward: i128,
+    pub difficulty: Difficulty,
     pub status: QuestStatus,
     pub created_at: u64,
 }
@@ -99,6 +101,7 @@ pub struct QuestInput {
     pub tags: Vec<String>,
     pub reward: i128,
     pub difficulty: Difficulty,
+    pub rewards: Vec<Reward>,
 }
 
 //
@@ -224,6 +227,8 @@ impl QuestContract {
         description: String,
         tags: Vec<String>,
         rewards: Vec<Reward>,
+        reward: i128,
+        difficulty: Difficulty,
     ) -> u64 {
         require_not_paused(&env);
         creator.require_auth();
@@ -250,6 +255,8 @@ impl QuestContract {
             description,
             tags: tags.clone(),
             rewards,
+            reward,
+            difficulty,
             status: QuestStatus::Active,
             created_at: env.ledger().timestamp(),
         };
@@ -309,6 +316,7 @@ impl QuestContract {
                 title: q.title,
                 description: q.description,
                 tags: q.tags.clone(),
+                rewards: q.rewards.clone(),
                 reward: q.reward,
                 difficulty: q.difficulty,
                 status: QuestStatus::Active,
