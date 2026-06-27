@@ -82,10 +82,13 @@ members = [
   "contracts/puzzle_pool_staking",
   "contracts/oracle_price_feed",
   "contracts/event_ticket",
-  "contracts/progressive_jackpot",
-  "contracts/rbac",
+  "contracts/progressive_jackpot",    "contracts/rbac",
+    "contracts/zk_proof",
+    "contracts/multisig_escrow",
     "contracts/proxy",
     "contracts/timelock_vault",
+    "contracts/governance_token",
+    "contracts/event_logging",
 ]
 
 [workspace.dependencies]
