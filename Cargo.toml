@@ -85,6 +85,8 @@ members = [
   "contracts/progressive_jackpot",
   "contracts/rbac",
     "contracts/proxy",
+    "contracts/governance_token",
+    "contracts/event_logging",
 ]
 
 [workspace.dependencies]
