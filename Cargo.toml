@@ -81,6 +81,7 @@ members = [
   "contracts/payment_splitter",
   "contracts/puzzle_pool_staking",
   "contracts/oracle_price_feed",
+  "contracts/oracle_integration",
   "contracts/event_ticket",
   "contracts/progressive_jackpot",
   "contracts/proxy",
