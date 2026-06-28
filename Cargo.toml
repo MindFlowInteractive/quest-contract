@@ -84,6 +84,7 @@ members = [
   "contracts/oracle_integration",
   "contracts/event_ticket",
   "contracts/progressive_jackpot",
+  "contracts/rbac",
   "contracts/proxy",
   "contracts/dynamic_metadata",    "contracts/rbac",    "contracts/zk_proof",
     "contracts/multisig_escrow",
