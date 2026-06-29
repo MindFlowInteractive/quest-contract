@@ -16,6 +16,13 @@ pub enum AuctionError {
     DutchOnly = 8,
     CurrentPriceHigherThanMax = 9,
     AuctionStillOngoing = 10,
+    SealedBidOnly = 11,
+    BiddingPeriodEnded = 12,
+    RevealPeriodNotStarted = 13,
+    RevealPeriodEnded = 14,
+    BidAlreadyRevealed = 15,
+    InvalidBidHash = 16,
+    BidsNotRevealed = 17,
 }
 
 fn panic_with_error(env: &Env, err: AuctionError) -> ! {
@@ -61,9 +68,29 @@ pub struct AuctionInfo {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Bid {
+    pub bidder: Address,
+    pub amount: i128,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuctionAnalytics {
+    pub total_bids: u32,
+    pub unique_bidders: u32,
+    pub bid_count_by_bidder: soroban_sdk::Map<Address, u32>,
+    pub created_at: u64,
+    pub settled_at: Option<u64>,
+}
+
+#[contracttype]
 pub enum DataKey {
     Auction(u64),
     AuctionCount,
+    AuctionBids(u64), // Stores Vec<Bid> for each auction
+    AuctionAnalytics(u64), // Stores analytics for each auction
 }
 
 // 2. CONTRACT LOGIC
