@@ -96,6 +96,7 @@ members = [
     "contracts/event_logging",
     "contracts/revenue_share",
     "contracts/cross_contract",
+    "contracts/royalty_distribution",
 ]  
 
 [workspace.dependencies]
