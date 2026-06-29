@@ -42,9 +42,19 @@ pub enum AuctionType {
 // NEW: Grouping settings to avoid the 10-parameter limit
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SealedBid {
+    pub bidder: Address,
+    pub bid_hash: soroban_sdk::Bytes, // Hash of (bidder, amount, secret)
+    pub revealed: bool,
+    pub amount: Option<i128>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AuctionSettings {
     pub start_time: u64,
-    pub end_time: u64,
+    pub end_time: u64, // For sealed-bid: end of bidding period
+    pub reveal_end_time: u64, // For sealed-bid: end of reveal period
     pub starting_price: i128,
     pub reserve_price: i128,
     pub buy_now_price: i128,
@@ -89,7 +99,8 @@ pub struct AuctionAnalytics {
 pub enum DataKey {
     Auction(u64),
     AuctionCount,
-    AuctionBids(u64), // Stores Vec<Bid> for each auction
+    AuctionBids(u64), // Stores Vec<Bid> for English auctions
+    SealedBids(u64), // Stores Vec<SealedBid> for sealed-bid auctions
     AuctionAnalytics(u64), // Stores analytics for each auction
 }
 
@@ -144,6 +155,41 @@ impl AuctionContract {
             current_bid: 0,
             settled: false,
         };
+
+        // Initialize empty bids list
+        env.storage()
+            .instance()
+            .set(&DataKey::AuctionBids(id), &Vec::<Bid>::new());
+            
+        // Initialize analytics
+        let mut bid_count_map = soroban_sdk::Map::new();
+        let analytics = AuctionAnalytics {
+            total_bids: 0,
+            unique_bidders: 0,
+            bid_count_by_bidder: bid_count_map,
+            created_at: env.ledger().timestamp(),
+            settled_at: None,
+        };
+        env.storage()
+            .instance()
+            .set(&DataKey::AuctionAnalytics(id), &analytics);
+            
+        // Initialize sealed bids storage if it's a sealed bid auction
+        if auction.auction_type == AuctionType::SealedBid {
+            env.storage()
+                .instance()
+                .set(&DataKey::Auction(id), &auction);
+            // Initialize empty sealed bids list
+            let sealed_bids_key = DataKey::AuctionBids(id); // Reuse but store Vec<SealedBid>
+            // Wait, need to add a separate key for sealed bids
+            #[contracttype]
+            enum SealedDataKey {
+                SealedBids(u64),
+            }
+            env.storage()
+                .instance()
+                .set(&SealedDataKey::SealedBids(id), &Vec::<SealedBid>::new());
+        }
 
         // Save
         env.storage()
