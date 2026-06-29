@@ -92,6 +92,7 @@ members = [
     "contracts/governance_token",
     "contracts/event_logging",
     "contracts/revenue_share",
+    "contracts/cross_contract",
 ]  
 
 [workspace.dependencies]
