@@ -178,17 +178,7 @@ impl AuctionContract {
         if auction.auction_type == AuctionType::SealedBid {
             env.storage()
                 .instance()
-                .set(&DataKey::Auction(id), &auction);
-            // Initialize empty sealed bids list
-            let sealed_bids_key = DataKey::AuctionBids(id); // Reuse but store Vec<SealedBid>
-            // Wait, need to add a separate key for sealed bids
-            #[contracttype]
-            enum SealedDataKey {
-                SealedBids(u64),
-            }
-            env.storage()
-                .instance()
-                .set(&SealedDataKey::SealedBids(id), &Vec::<SealedBid>::new());
+                .set(&DataKey::SealedBids(id), &Vec::<SealedBid>::new());
         }
 
         // Save
@@ -263,7 +253,41 @@ impl AuctionContract {
             auction.settings.end_time = current_time + 300;
         }
 
-        // 7. Update State & Save
+        // 7. Add bid to history
+        let mut bids: Vec<Bid> = env.storage()
+            .instance()
+            .get(&DataKey::AuctionBids(auction_id))
+            .unwrap();
+            
+        bids.push(Bid {
+            bidder: bidder.clone(),
+            amount: bid_amount,
+            timestamp: current_time,
+        });
+        
+        env.storage()
+            .instance()
+            .set(&DataKey::AuctionBids(auction_id), &bids);
+            
+        // 8. Update analytics
+        let mut analytics: AuctionAnalytics = env.storage()
+            .instance()
+            .get(&DataKey::AuctionAnalytics(auction_id))
+            .unwrap();
+            
+        analytics.total_bids += 1;
+        if let Some(count) = analytics.bid_count_by_bidder.get(bidder.clone()) {
+            analytics.bid_count_by_bidder.set(bidder.clone(), count + 1);
+        } else {
+            analytics.bid_count_by_bidder.set(bidder.clone(), 1);
+            analytics.unique_bidders += 1;
+        }
+        
+        env.storage()
+            .instance()
+            .set(&DataKey::AuctionAnalytics(auction_id), &analytics);
+
+        // 9. Update State & Save
         auction.highest_bidder = Some(bidder);
         auction.current_bid = bid_amount;
 
