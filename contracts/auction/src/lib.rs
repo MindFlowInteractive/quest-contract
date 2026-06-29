@@ -558,10 +558,35 @@ impl AuctionContract {
             panic_with_error(&env, AuctionError::AuctionAlreadySettled);
         }
 
-        // For English auctions, ensure time has passed
+        let current_time = env.ledger().timestamp();
+        
+        // Check auction can be settled
         if auction.auction_type == AuctionType::English {
-            if env.ledger().timestamp() < auction.settings.end_time {
+            if current_time < auction.settings.end_time {
                 panic_with_error(&env, AuctionError::AuctionStillOngoing);
+            }
+        } else if auction.auction_type == AuctionType::SealedBid {
+            if current_time < auction.settings.reveal_end_time {
+                panic_with_error(&env, AuctionError::AuctionStillOngoing);
+            }
+            // Ensure all bids are revealed for sealed-bid auctions
+            let sealed_bids: Vec<SealedBid> = env.storage()
+                .instance()
+                .get(&DataKey::SealedBids(auction_id))
+                .unwrap();
+                
+            for bid in &sealed_bids {
+                if !bid.revealed {
+                    // Refund unrevealed bids
+                    if let Some(amount) = bid.amount {
+                        let token_client = token::Client::new(&env, &auction.payment_token);
+                        token_client.transfer(
+                            &env.current_contract_address(),
+                            &bid.bidder,
+                            &amount,
+                        );
+                    }
+                }
             }
         }
 
@@ -586,6 +611,16 @@ impl AuctionContract {
                 transfer_args.into_val(&env),
             );
         }
+        
+        // Update analytics with settled timestamp
+        let mut analytics: AuctionAnalytics = env.storage()
+            .instance()
+            .get(&DataKey::AuctionAnalytics(auction_id))
+            .unwrap();
+        analytics.settled_at = Some(current_time);
+        env.storage()
+            .instance()
+            .set(&DataKey::AuctionAnalytics(auction_id), &analytics);
 
         // Mark as settled so it can't be processed again
         auction.settled = true;
