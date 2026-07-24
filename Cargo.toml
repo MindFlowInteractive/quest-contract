@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "contracts/backend_core",
   "contracts/subscription",
   "contracts/achievement_collection",
   "contracts/achievement_nft",
@@ -97,7 +98,7 @@ members = [
     "contracts/revenue_share",
     "contracts/cross_contract",
     "contracts/royalty_distribution",
-]  
+]
 
 [workspace.dependencies]
 soroban-sdk = { version = "21.0.0" }
