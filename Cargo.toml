@@ -94,9 +94,11 @@ members = [
     "contracts/timelock_vault",
     "contracts/governance_token",
     "contracts/event_logging",
-    "contracts/revenue_share",
-    "contracts/cross_contract",
-    "contracts/royalty_distribution",
+"contracts/revenue_share",
+  "contracts/cross_contract",
+  "contracts/royalty_distribution",
+  "contracts/query_engine",
+]
     "contracts/collateral_lending",
 ]  
 
