@@ -3,6 +3,7 @@
 //! access logging, and a deny-overrides policy engine.
 #![no_std]
 
+mod cache;
 mod storage;
 mod types;
 
