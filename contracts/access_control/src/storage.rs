@@ -18,6 +18,8 @@ pub enum DataKey {
     AccessLogs,
     RoleGrants(Address),
     RolePerms(Symbol),
+    AllRoleGrants,
+    AllRolePerms,
     Capability(u64),
     HolderCaps(Address),
     DelegatedRoles(Address),
@@ -109,6 +111,36 @@ impl Storage {
         let key = DataKey::RolePerms(role.clone());
         env.storage().persistent().set(&key, perms);
         env.storage().persistent().remove(&DataKey::Cached(Box::new(key)));
+    }
+
+    pub fn add_role_grant_address(env: &Env, address: &Address) {
+        let mut addresses = Self::get_all_role_grant_addresses(env);
+        if !addresses.contains(address) {
+            addresses.push_back(address.clone());
+            env.storage().persistent().set(&DataKey::AllRoleGrants, &addresses);
+        }
+    }
+
+    pub fn get_all_role_grant_addresses(env: &Env) -> Vec<Address> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::AllRoleGrants)
+            .unwrap_or_else(|| Vec::new(env))
+    }
+
+    pub fn add_role_perm_role(env: &Env, role: &Symbol) {
+        let mut roles = Self::get_all_role_perm_roles(env);
+        if !roles.contains(role) {
+            roles.push_back(role.clone());
+            env.storage().persistent().set(&DataKey::AllRolePerms, &roles);
+        }
+    }
+
+    pub fn get_all_role_perm_roles(env: &Env) -> Vec<Symbol> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::AllRolePerms)
+            .unwrap_or_else(|| Vec::new(env))
     }
 
     pub fn next_cap_id(env: &Env) -> u64 {
