@@ -100,6 +100,8 @@ members = [
     "contracts/royalty_distribution",
 
   "contracts/query_engine",
+  "contracts/wrapped_tokens",
+  "contracts/reward_distribution",
 ]
     "contracts/collateral_lending",
 ]  
