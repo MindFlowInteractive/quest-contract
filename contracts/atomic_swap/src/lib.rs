@@ -9,7 +9,7 @@ use soroban_sdk::{
 };
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum SwapStatus {
     Initiated = 1,
     Withdrawn = 2,
@@ -61,7 +61,8 @@ pub struct AtomicSwapContract;
 fn verify_hashlock(env: &Env, secret: &BytesN<32>, hashlock: &BytesN<32>) -> bool {
     let secret_bytes = Bytes::from_slice(env, secret.to_array().as_slice());
     let hash = env.crypto().sha256(&secret_bytes);
-    &hash == hashlock
+    let hash_bytes: BytesN<32> = hash.into();
+    &hash_bytes == hashlock
 }
 
 #[contractimpl]
