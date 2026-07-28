@@ -98,6 +98,7 @@ members = [
     "contracts/revenue_share",
     "contracts/cross_contract",
     "contracts/validation_lib",
+    "contracts/batch_minting",
     "contracts/royalty_distribution",
 
   "contracts/query_engine",
