@@ -86,10 +86,10 @@ members = [
   "contracts/event_ticket",
   "contracts/progressive_jackpot",
   "contracts/rbac",
+  "contracts/access_control",
   "contracts/proxy",
   "contracts/dynamic_metadata",
   "contracts/insurance_pool",
-  "contracts/rbac",
     "contracts/zk_proof",
     "contracts/multisig_escrow",
     "contracts/timelock_vault",
@@ -102,9 +102,8 @@ members = [
     "contracts/royalty_distribution",
 
   "contracts/query_engine",
+  "contracts/collateral_lending",
 ]
-    "contracts/collateral_lending",
-]  
 
 [workspace.dependencies]
 soroban-sdk = { version = "21.0.0" }
