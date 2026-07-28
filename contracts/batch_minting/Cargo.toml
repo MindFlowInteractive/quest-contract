@@ -1,0 +1,23 @@
+[package]
+name = "batch_minting"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+validation_lib = { path = "../validation_lib" }
+
+[profile.release]
+opt-level = "z"
+debug = 0
+strip = "symbols"
+debug-assertions = false
+overflow-checks = true
+lto = true
+panic = "abort"
+codegen-units = 1
+
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true
