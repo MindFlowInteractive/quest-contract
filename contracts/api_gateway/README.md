@@ -104,9 +104,13 @@ if breaker.allow_request(now) {
 
 ## Testing
 
-The module includes 38 unit tests covering routing, authentication, rate
-limiting, logging, CORS, health checks, the circuit breaker state machine,
-request transformation, and full gateway pipeline orchestration.
+The module includes 45 unit tests covering routing, authentication (valid,
+missing, expired, and wrong-scope tokens), rate limiting (allow, reject,
+window reset), logging, CORS (allow-list, wildcard, rejection), health
+checks, the circuit breaker state machine (closed → open → half-open →
+closed recovery), request transformation, and full gateway pipeline
+orchestration for every `GatewayOutcome` branch (`Routed`, `NotFound`,
+`Unauthorized`, `RateLimited`, `CircuitOpen`, `CorsRejected`).
 
 Run tests with:
 ```bash
