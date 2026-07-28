@@ -247,6 +247,21 @@ fn test_revoke_delegation_by_stranger_fails() {
 // --------------------------------------------------------------- capability
 
 #[test]
+fn test_cache_invalidation() {
+    let (env, client, _admin) = setup();
+    let user = Address::generate(&env);
+    let role = symbol_short!("editor");
+
+    // Grant the role and check that it's cached
+    client.grant_role(&user, &role, &0);
+    assert!(client.has_role(&user, &role));
+
+    // Revoke the role and check that the cache is invalidated
+    client.revoke_role(&user, &role);
+    assert!(!client.has_role(&user, &role));
+}
+
+#[test]
 fn test_issue_and_use_capability() {
     let (env, client, _admin) = setup();
     let holder = Address::generate(&env);

@@ -3,6 +3,7 @@
 //! access logging, and a deny-overrides policy engine.
 #![no_std]
 
+mod cache;
 mod storage;
 mod types;
 
@@ -83,6 +84,7 @@ impl AccessControlContract {
             expires_at,
         });
         Storage::set_role_grants(&env, &address, &grants);
+        Storage::add_role_grant_address(&env, &address);
         Storage::add_log(&env, &admin, symbol_short!("grant"), role.clone(), true);
         env.events()
             .publish((symbol_short!("grant"),), (admin, address, role, expires_at));
@@ -111,6 +113,7 @@ impl AccessControlContract {
         }
         perms.push_back(permission.clone());
         Storage::set_role_perms(&env, &role, &perms);
+        Storage::add_role_perm_role(&env, &role);
         env.events()
             .publish((symbol_short!("add_perm"),), (admin, role, permission));
         Ok(())
@@ -154,6 +157,24 @@ impl AccessControlContract {
 
     pub fn get_role_permissions(env: Env, role: Symbol) -> Vec<Symbol> {
         Storage::get_role_perms(&env, &role)
+    }
+
+    pub fn get_all_role_grants(env: Env) -> Vec<(Address, Vec<RoleGrant>)> {
+        let mut result = Vec::new(&env);
+        for address in Storage::get_all_role_grant_addresses(&env).iter() {
+            let grants = Storage::get_role_grants(&env, &address);
+            result.push_back((address, grants));
+        }
+        result
+    }
+
+    pub fn get_all_role_permissions(env: Env) -> Vec<(Symbol, Vec<Symbol>)> {
+        let mut result = Vec::new(&env);
+        for role in Storage::get_all_role_perm_roles(&env).iter() {
+            let perms = Storage::get_role_perms(&env, &role);
+            result.push_back((role, perms));
+        }
+        result
     }
 
     // ------------------------------------------------------ role delegation
@@ -457,6 +478,15 @@ impl AccessControlContract {
 
     pub fn get_access_log_count(env: Env) -> u32 {
         Storage::get_logs(&env).len()
+    }
+
+    pub fn get_data_keys(env: Env) -> Vec<Symbol> {
+        let mut keys = Vec::new(&env);
+        keys.push_back(Symbol::new(&env, "Admin"));
+        keys.push_back(Symbol::new(&env, "Paused"));
+        keys.push_back(Symbol::new(&env, "NextCapId"));
+        keys.push_back(Symbol::new(&env, "AccessLogs"));
+        keys
     }
 }
 

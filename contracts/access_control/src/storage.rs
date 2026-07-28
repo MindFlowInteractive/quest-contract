@@ -1,10 +1,13 @@
+use crate::cache::Cached;
 use crate::types::{
     AccessError, AccessLogEntry, Capability, DelegatedRole, Policy, RoleGrant,
 };
-use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
+use soroban_sdk::{contracttype, Box, Address, Env, Symbol, Vec};
 
 /// Maximum number of retained access log entries; oldest entries are dropped.
 const MAX_LOGS: u32 = 500;
+
+const DEFAULT_TTL: u64 = 60 * 5; // 5 minutes
 
 #[contracttype]
 #[derive(Clone)]
@@ -15,10 +18,13 @@ pub enum DataKey {
     AccessLogs,
     RoleGrants(Address),
     RolePerms(Symbol),
+    AllRoleGrants,
+    AllRolePerms,
     Capability(u64),
     HolderCaps(Address),
     DelegatedRoles(Address),
     Policy(Symbol, Symbol),
+    Cached(Box<DataKey>),
 }
 
 pub struct Storage;
@@ -50,30 +56,91 @@ impl Storage {
             .unwrap_or(false)
     }
 
+    pub fn get_cached<T: soroban_sdk::TryFrom<soroban_sdk::Val>>(env: &Env, key: &DataKey) -> Option<T> {
+        let cached_key = DataKey::Cached(Box::new(key.clone()));
+        if let Some(cached) = env.storage().persistent().get::<Cached<T>>(&cached_key) {
+            if !cached.is_expired(env) {
+                return Some(cached.data);
+            }
+        }
+        None
+    }
+
+    pub fn set_cached<T: soroban_sdk::IntoVal<Env, soroban_sdk::Val>>(env: &Env, key: &DataKey, data: &T, ttl: u64) {
+        let cached_key = DataKey::Cached(Box::new(key.clone()));
+        let expires_at = if ttl > 0 { env.ledger().timestamp() + ttl } else { 0 };
+        let cached = Cached::new(data, expires_at);
+        env.storage().persistent().set(&cached_key, &cached);
+    }
+
     pub fn get_role_grants(env: &Env, address: &Address) -> Vec<RoleGrant> {
-        env.storage()
+        let key = DataKey::RoleGrants(address.clone());
+        if let Some(grants) = Self::get_cached(env, &key) {
+            return grants;
+        }
+        let grants = env
+            .storage()
             .persistent()
-            .get(&DataKey::RoleGrants(address.clone()))
-            .unwrap_or_else(|| Vec::new(env))
+            .get(&key)
+            .unwrap_or_else(|| Vec::new(env));
+        Self::set_cached(env, &key, &grants, DEFAULT_TTL);
+        grants
     }
 
     pub fn set_role_grants(env: &Env, address: &Address, grants: &Vec<RoleGrant>) {
-        env.storage()
-            .persistent()
-            .set(&DataKey::RoleGrants(address.clone()), grants);
+        let key = DataKey::RoleGrants(address.clone());
+        env.storage().persistent().set(&key, grants);
+        env.storage().persistent().remove(&DataKey::Cached(Box::new(key)));
     }
 
     pub fn get_role_perms(env: &Env, role: &Symbol) -> Vec<Symbol> {
-        env.storage()
+        let key = DataKey::RolePerms(role.clone());
+        if let Some(perms) = Self::get_cached(env, &key) {
+            return perms;
+        }
+        let perms = env
+            .storage()
             .persistent()
-            .get(&DataKey::RolePerms(role.clone()))
-            .unwrap_or_else(|| Vec::new(env))
+            .get(&key)
+            .unwrap_or_else(|| Vec::new(env));
+        Self::set_cached(env, &key, &perms, DEFAULT_TTL);
+        perms
     }
 
     pub fn set_role_perms(env: &Env, role: &Symbol, perms: &Vec<Symbol>) {
+        let key = DataKey::RolePerms(role.clone());
+        env.storage().persistent().set(&key, perms);
+        env.storage().persistent().remove(&DataKey::Cached(Box::new(key)));
+    }
+
+    pub fn add_role_grant_address(env: &Env, address: &Address) {
+        let mut addresses = Self::get_all_role_grant_addresses(env);
+        if !addresses.contains(address) {
+            addresses.push_back(address.clone());
+            env.storage().persistent().set(&DataKey::AllRoleGrants, &addresses);
+        }
+    }
+
+    pub fn get_all_role_grant_addresses(env: &Env) -> Vec<Address> {
         env.storage()
             .persistent()
-            .set(&DataKey::RolePerms(role.clone()), perms);
+            .get(&DataKey::AllRoleGrants)
+            .unwrap_or_else(|| Vec::new(env))
+    }
+
+    pub fn add_role_perm_role(env: &Env, role: &Symbol) {
+        let mut roles = Self::get_all_role_perm_roles(env);
+        if !roles.contains(role) {
+            roles.push_back(role.clone());
+            env.storage().persistent().set(&DataKey::AllRolePerms, &roles);
+        }
+    }
+
+    pub fn get_all_role_perm_roles(env: &Env) -> Vec<Symbol> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::AllRolePerms)
+            .unwrap_or_else(|| Vec::new(env))
     }
 
     pub fn next_cap_id(env: &Env) -> u64 {
@@ -87,61 +154,87 @@ impl Storage {
     }
 
     pub fn get_capability(env: &Env, id: u64) -> Result<Capability, AccessError> {
-        env.storage()
+        let key = DataKey::Capability(id);
+        if let Some(cap) = Self::get_cached(env, &key) {
+            return Ok(cap);
+        }
+        let cap = env
+            .storage()
             .persistent()
-            .get(&DataKey::Capability(id))
-            .ok_or(AccessError::CapabilityNotFound)
+            .get(&key)
+            .ok_or(AccessError::CapabilityNotFound)?;
+        Self::set_cached(env, &key, &cap, DEFAULT_TTL);
+        Ok(cap)
     }
 
     pub fn set_capability(env: &Env, cap: &Capability) {
-        env.storage()
-            .persistent()
-            .set(&DataKey::Capability(cap.id), cap);
+        let key = DataKey::Capability(cap.id);
+        env.storage().persistent().set(&key, cap);
+        env.storage().persistent().remove(&DataKey::Cached(Box::new(key)));
     }
 
     pub fn get_holder_caps(env: &Env, holder: &Address) -> Vec<u64> {
-        env.storage()
+        let key = DataKey::HolderCaps(holder.clone());
+        if let Some(ids) = Self::get_cached(env, &key) {
+            return ids;
+        }
+        let ids = env
+            .storage()
             .persistent()
-            .get(&DataKey::HolderCaps(holder.clone()))
-            .unwrap_or_else(|| Vec::new(env))
+            .get(&key)
+            .unwrap_or_else(|| Vec::new(env));
+        Self::set_cached(env, &key, &ids, DEFAULT_TTL);
+        ids
     }
 
     pub fn set_holder_caps(env: &Env, holder: &Address, ids: &Vec<u64>) {
-        env.storage()
-            .persistent()
-            .set(&DataKey::HolderCaps(holder.clone()), ids);
+        let key = DataKey::HolderCaps(holder.clone());
+        env.storage().persistent().set(&key, ids);
+        env.storage().persistent().remove(&DataKey::Cached(Box::new(key)));
     }
 
     pub fn get_delegated_roles(env: &Env, address: &Address) -> Vec<DelegatedRole> {
-        env.storage()
+        let key = DataKey::DelegatedRoles(address.clone());
+        if let Some(delegations) = Self::get_cached(env, &key) {
+            return delegations;
+        }
+        let delegations = env
+            .storage()
             .persistent()
-            .get(&DataKey::DelegatedRoles(address.clone()))
-            .unwrap_or_else(|| Vec::new(env))
+            .get(&key)
+            .unwrap_or_else(|| Vec::new(env));
+        Self::set_cached(env, &key, &delegations, DEFAULT_TTL);
+        delegations
     }
 
     pub fn set_delegated_roles(env: &Env, address: &Address, delegations: &Vec<DelegatedRole>) {
-        env.storage()
-            .persistent()
-            .set(&DataKey::DelegatedRoles(address.clone()), delegations);
+        let key = DataKey::DelegatedRoles(address.clone());
+        env.storage().persistent().set(&key, delegations);
+        env.storage().persistent().remove(&DataKey::Cached(Box::new(key)));
     }
 
     pub fn get_policy(env: &Env, resource: &Symbol, action: &Symbol) -> Option<Policy> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Policy(resource.clone(), action.clone()))
+        let key = DataKey::Policy(resource.clone(), action.clone());
+        if let Some(policy) = Self::get_cached(env, &key) {
+            return Some(policy);
+        }
+        let policy = env.storage().persistent().get(&key);
+        if let Some(p) = &policy {
+            Self::set_cached(env, &key, p, DEFAULT_TTL);
+        }
+        policy
     }
 
     pub fn set_policy(env: &Env, policy: &Policy) {
-        env.storage().persistent().set(
-            &DataKey::Policy(policy.resource.clone(), policy.action.clone()),
-            policy,
-        );
+        let key = DataKey::Policy(policy.resource.clone(), policy.action.clone());
+        env.storage().persistent().set(&key, policy);
+        env.storage().persistent().remove(&DataKey::Cached(Box::new(key)));
     }
 
     pub fn remove_policy(env: &Env, resource: &Symbol, action: &Symbol) {
-        env.storage()
-            .persistent()
-            .remove(&DataKey::Policy(resource.clone(), action.clone()));
+        let key = DataKey::Policy(resource.clone(), action.clone());
+        env.storage().persistent().remove(&key);
+        env.storage().persistent().remove(&DataKey::Cached(Box::new(key)));
     }
 
     pub fn get_logs(env: &Env) -> Vec<AccessLogEntry> {
