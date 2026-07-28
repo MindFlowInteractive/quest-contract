@@ -100,9 +100,9 @@ members = [
     "contracts/royalty_distribution",
 
   "contracts/query_engine",
+  "contracts/collateral_lending",
+  "contracts/api_gateway",
 ]
-    "contracts/collateral_lending",
-]  
 
 [workspace.dependencies]
 soroban-sdk = { version = "21.0.0" }
