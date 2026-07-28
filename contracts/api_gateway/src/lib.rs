@@ -81,16 +81,15 @@ impl RouteTable {
     }
 
     pub fn resolve(&self, path: &String, method: HttpMethod) -> Option<Route> {
-        for route in self.routes.iter() {
-            if route.matches(path, method) {
-                return Some(route);
-            }
-        }
-        None
+        self.routes.iter().find(|route| route.matches(path, method))
     }
 
     pub fn len(&self) -> u32 {
         self.routes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.routes.is_empty()
     }
 }
 
@@ -640,6 +639,20 @@ mod tests {
     }
 
     #[test]
+    fn test_route_table_is_empty() {
+        let e = env();
+        let mut table = RouteTable::new(&e);
+        assert!(table.is_empty());
+        table.add_route(Route::new(
+            String::from_str(&e, "/a"),
+            HttpMethod::Get,
+            String::from_str(&e, "svc"),
+            false,
+        ));
+        assert!(!table.is_empty());
+    }
+
+    #[test]
     fn test_route_table_len() {
         let e = env();
         let mut table = RouteTable::new(&e);
@@ -963,6 +976,18 @@ mod tests {
         assert_eq!(ctx.path, String::from_str(&e, "/internal/v2/quests"));
     }
 
+    #[test]
+    fn test_request_context_rewrite_no_match_leaves_path() {
+        let e = env();
+        let mut ctx = RequestContext::new(&e, String::from_str(&e, "/api/quests"), HttpMethod::Get);
+        let rule = TransformRule::new(
+            String::from_str(&e, "/api/other"),
+            String::from_str(&e, "/internal/v2/other"),
+        );
+        assert!(!ctx.apply_rewrite(&rule));
+        assert_eq!(ctx.path, String::from_str(&e, "/api/quests"));
+    }
+
     // ── Gateway orchestration ─────────────────────────────
 
     fn sample_routes(e: &Env) -> RouteTable {
@@ -1150,5 +1175,179 @@ mod tests {
             process_request(0, &routes, &mut rate_limiter, &mut circuit, &cors, &request);
         assert_eq!(response.outcome, GatewayOutcome::CorsRejected);
         assert_eq!(response.status_code, 403);
+    }
+
+    #[test]
+    fn test_process_request_cors_allowed_origin_routes() {
+        let e = env();
+        let routes = sample_routes(&e);
+        let mut rate_limiter = RateLimitState::new(10, 60, 0);
+        let mut circuit = CircuitBreaker::new(3, 60);
+        let mut cors = CorsPolicy::new(&e, false);
+        cors.allow_origin(&e, String::from_str(&e, "https://app.example.com"));
+
+        let request = GatewayRequest {
+            path: String::from_str(&e, "/public"),
+            method: HttpMethod::Get,
+            origin: Some(String::from_str(&e, "https://app.example.com")),
+            auth_token: None,
+            required_scope: String::from_str(&e, "read"),
+        };
+
+        let response =
+            process_request(0, &routes, &mut rate_limiter, &mut circuit, &cors, &request);
+        assert_eq!(response.outcome, GatewayOutcome::Routed);
+        assert_eq!(response.status_code, 200);
+    }
+
+    #[test]
+    fn test_process_request_expired_token_unauthorized() {
+        let e = env();
+        let routes = sample_routes(&e);
+        let mut rate_limiter = RateLimitState::new(10, 60, 0);
+        let mut circuit = CircuitBreaker::new(3, 60);
+        let cors = CorsPolicy::new(&e, false);
+        // Token issued at t=0 with a 100s TTL; the request arrives at t=200,
+        // well past expiry.
+        let token = AuthToken::new(
+            String::from_str(&e, "user-1"),
+            0,
+            100,
+            String::from_str(&e, "read"),
+        );
+
+        let request = GatewayRequest {
+            path: String::from_str(&e, "/private"),
+            method: HttpMethod::Get,
+            origin: None,
+            auth_token: Some(token),
+            required_scope: String::from_str(&e, "read"),
+        };
+
+        let response = process_request(
+            200,
+            &routes,
+            &mut rate_limiter,
+            &mut circuit,
+            &cors,
+            &request,
+        );
+        assert_eq!(response.outcome, GatewayOutcome::Unauthorized);
+        assert_eq!(response.status_code, 401);
+    }
+
+    #[test]
+    fn test_process_request_invalid_scope_unauthorized() {
+        let e = env();
+        let routes = sample_routes(&e);
+        let mut rate_limiter = RateLimitState::new(10, 60, 0);
+        let mut circuit = CircuitBreaker::new(3, 60);
+        let cors = CorsPolicy::new(&e, false);
+        let token = AuthToken::new(
+            String::from_str(&e, "user-1"),
+            0,
+            3600,
+            String::from_str(&e, "write"),
+        );
+
+        let request = GatewayRequest {
+            path: String::from_str(&e, "/private"),
+            method: HttpMethod::Get,
+            origin: None,
+            auth_token: Some(token),
+            required_scope: String::from_str(&e, "read"),
+        };
+
+        let response =
+            process_request(0, &routes, &mut rate_limiter, &mut circuit, &cors, &request);
+        assert_eq!(response.outcome, GatewayOutcome::Unauthorized);
+        assert_eq!(response.status_code, 401);
+    }
+
+    #[test]
+    fn test_process_request_rate_limit_resets_after_window() {
+        let e = env();
+        let routes = sample_routes(&e);
+        let mut rate_limiter = RateLimitState::new(1, 60, 0);
+        let mut circuit = CircuitBreaker::new(3, 60);
+        let cors = CorsPolicy::new(&e, false);
+
+        let request = GatewayRequest {
+            path: String::from_str(&e, "/public"),
+            method: HttpMethod::Get,
+            origin: None,
+            auth_token: None,
+            required_scope: String::from_str(&e, "read"),
+        };
+
+        let first = process_request(0, &routes, &mut rate_limiter, &mut circuit, &cors, &request);
+        assert_eq!(first.outcome, GatewayOutcome::Routed);
+
+        let second = process_request(
+            10,
+            &routes,
+            &mut rate_limiter,
+            &mut circuit,
+            &cors,
+            &request,
+        );
+        assert_eq!(second.outcome, GatewayOutcome::RateLimited);
+
+        // Once the 60s window elapses, the same client is allowed again.
+        let third = process_request(
+            60,
+            &routes,
+            &mut rate_limiter,
+            &mut circuit,
+            &cors,
+            &request,
+        );
+        assert_eq!(third.outcome, GatewayOutcome::Routed);
+    }
+
+    #[test]
+    fn test_process_request_circuit_recovers_through_half_open() {
+        let e = env();
+        let routes = sample_routes(&e);
+        let mut rate_limiter = RateLimitState::new(10, 60, 0);
+        let mut circuit = CircuitBreaker::new(1, 30);
+        circuit.record_failure(0);
+        let cors = CorsPolicy::new(&e, false);
+
+        let request = GatewayRequest {
+            path: String::from_str(&e, "/public"),
+            method: HttpMethod::Get,
+            origin: None,
+            auth_token: None,
+            required_scope: String::from_str(&e, "read"),
+        };
+
+        // Still within the reset timeout: requests keep failing fast.
+        let blocked = process_request(
+            10,
+            &routes,
+            &mut rate_limiter,
+            &mut circuit,
+            &cors,
+            &request,
+        );
+        assert_eq!(blocked.outcome, GatewayOutcome::CircuitOpen);
+
+        // Reset timeout elapsed: the breaker moves to HalfOpen and lets the
+        // request reach routing.
+        let recovered = process_request(
+            30,
+            &routes,
+            &mut rate_limiter,
+            &mut circuit,
+            &cors,
+            &request,
+        );
+        assert_eq!(recovered.outcome, GatewayOutcome::Routed);
+        assert_eq!(circuit.state, CircuitState::HalfOpen);
+
+        // A subsequent success fully closes the breaker again.
+        circuit.record_success();
+        assert_eq!(circuit.state, CircuitState::Closed);
     }
 }
