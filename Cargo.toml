@@ -103,6 +103,7 @@ members = [
 
   "contracts/query_engine",
   "contracts/collateral_lending",
+  "contracts/api_gateway",
 ]
 
 [workspace.dependencies]
