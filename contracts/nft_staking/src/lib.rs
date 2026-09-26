@@ -1,6 +1,8 @@
 #![no_std]
 
-use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env, Symbol};
+mod reward_history;
+
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env, Symbol, Vec};
 
 // ─────────────────────────────────────────────────────────────
 // Constants
@@ -234,6 +236,7 @@ impl NftStakingContract {
             let rewards = RewardTokenClient::new(&env, &cfg.reward_token);
             let minter = env.current_contract_address();
             rewards.mint(&minter, &pos.staker, &pending);
+            reward_history::record_claim(&env, &pos.staker, token_id, pending);
 
             env.events()
                 .publish((Symbol::new(&env, "RewardsClaimed"), token_id), (pos.staker.clone(), pending));
@@ -268,6 +271,7 @@ impl NftStakingContract {
             let rewards = RewardTokenClient::new(&env, &cfg.reward_token);
             let minter = env.current_contract_address();
             rewards.mint(&minter, &pos.staker, &pending);
+            reward_history::record_claim(&env, &pos.staker, token_id, pending);
 
             env.events()
                 .publish((Symbol::new(&env, "RewardsClaimed"), token_id), (pos.staker.clone(), pending));
@@ -294,6 +298,11 @@ impl NftStakingContract {
     pub fn pending_rewards(env: Env, token_id: u32) -> i128 {
         let pos = Self::load_position(&env, token_id);
         Self::calculate_pending_rewards(&env, &pos)
+    }
+
+    /// Get this staker's past reward claims (token id, amount, ledger).
+    pub fn get_reward_history(env: Env, staker: Address) -> Vec<reward_history::RewardClaimEntry> {
+        reward_history::get_history(&env, &staker)
     }
 
     /// Get stake details plus pending rewards and days staked.
