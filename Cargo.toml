@@ -104,6 +104,7 @@ members = [
   "contracts/query_engine",
   "contracts/collateral_lending",
   "contracts/atomic_swap",
+  "contracts/curve_bonding_nft",
 ]
 
 [workspace.dependencies]
