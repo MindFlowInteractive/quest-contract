@@ -106,6 +106,7 @@ members = [
   "contracts/atomic_swap",
   "contracts/curve_bonding_nft",
   "contracts/skill_betting",
+  "contracts/swap_aggregator",
 ]
 
 [workspace.dependencies]
