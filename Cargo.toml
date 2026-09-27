@@ -107,6 +107,7 @@ members = [
   "contracts/skill_betting",
   "contracts/data_feed",
   "contracts/referral_rewards",
+  "contracts/prediction_aggregator",
 ]
 
 [workspace.dependencies]
