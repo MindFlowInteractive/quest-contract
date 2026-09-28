@@ -107,6 +107,9 @@ members = [
   "contracts/atomic_swap",
   "contracts/curve_bonding_nft",
   "contracts/skill_betting",
+  "contracts/data_feed",
+  "contracts/referral_rewards",
+  "contracts/prediction_aggregator",
   "contracts/swap_aggregator",
 ]
 
