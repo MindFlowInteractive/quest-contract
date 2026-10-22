@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "contracts/completion_anchor",
   "contracts/backend_core",
   "contracts/subscription",
   "contracts/achievement_collection",
