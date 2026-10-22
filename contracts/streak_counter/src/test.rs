@@ -1,7 +1,17 @@
 use super::*;
-use soroban_sdk::{testutils::{Address as _, Ledger}, token, vec, IntoVal};
+use soroban_sdk::{
+    testutils::{Address as _, IssuerFlags, Ledger},
+    token, vec, IntoVal,
+};
 
-struct Fixture { env: Env, id: Address, admin: Address, verifier: Address, token: Address, player: Address }
+struct Fixture {
+    env: Env,
+    id: Address,
+    admin: Address,
+    verifier: Address,
+    token: Address,
+    player: Address,
+}
 impl Fixture {
     fn new() -> Self {
         let env = Env::default();
@@ -9,23 +19,42 @@ impl Fixture {
         let admin = Address::generate(&env);
         let verifier = Address::generate(&env);
         let player = Address::generate(&env);
-        let token = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let asset = env.register_stellar_asset_contract_v2(admin.clone());
+        asset.issuer().set_flag(IssuerFlags::RevocableFlag);
+        let token = asset.address();
         let id = env.register_contract(None, StreakCounter);
-        let f = Self { env, id, admin, verifier, token, player };
+        let f = Self {
+            env,
+            id,
+            admin,
+            verifier,
+            token,
+            player,
+        };
         let mut milestones = Map::new(&f.env);
         milestones.set(7, 70);
         milestones.set(30, 300);
         milestones.set(100, 1000);
-        f.client().initialize(&f.admin, &f.verifier, &f.token, &(200 * DAY), &milestones);
+        f.client()
+            .initialize(&f.admin, &f.verifier, &f.token, &(200 * DAY), &milestones);
         token::StellarAssetClient::new(&f.env, &f.token).mint(&f.admin, &10_000);
         f
     }
-    fn client(&self) -> StreakCounterClient<'_> { StreakCounterClient::new(&self.env, &self.id) }
-    fn day(&self, day: u64) { self.env.ledger().with_mut(|l| l.timestamp = day * DAY); }
-    fn reach(&self, days: u64) {
-        for day in 0..days { self.day(day); self.client().check_in(&self.player); }
+    fn client(&self) -> StreakCounterClient<'_> {
+        StreakCounterClient::new(&self.env, &self.id)
     }
-    fn tokens(&self, who: &Address) -> i128 { token::Client::new(&self.env, &self.token).balance(who) }
+    fn day(&self, day: u64) {
+        self.env.ledger().with_mut(|l| l.timestamp = day * DAY);
+    }
+    fn reach(&self, days: u64) {
+        for day in 0..days {
+            self.day(day);
+            self.client().check_in(&self.player);
+        }
+    }
+    fn tokens(&self, who: &Address) -> i128 {
+        token::Client::new(&self.env, &self.token).balance(who)
+    }
 }
 
 #[test]
@@ -34,9 +63,15 @@ fn milestones_pay_once_and_conserve_tokens() {
     f.client().fund(&f.admin, &1370);
     f.reach(100);
     for milestone in [7, 30, 100] {
-        assert_eq!(f.client().claim(&f.player, &milestone), f.client().get_config().milestones.get(milestone).unwrap());
+        assert_eq!(
+            f.client().claim(&f.player, &milestone),
+            f.client().get_config().milestones.get(milestone).unwrap()
+        );
         assert!(f.client().has_claimed(&f.player, &milestone));
-        assert_eq!(f.client().try_claim(&f.player, &milestone), Err(Ok(Error::AlreadyClaimed)));
+        assert_eq!(
+            f.client().try_claim(&f.player, &milestone),
+            Err(Ok(Error::AlreadyClaimed))
+        );
     }
     assert_eq!(f.tokens(&f.player), 1370);
     assert_eq!(f.client().balance(), 0);
@@ -48,7 +83,10 @@ fn underfunded_claim_remains_available_after_top_up() {
     let f = Fixture::new();
     f.reach(7);
     f.client().fund(&f.admin, &69);
-    assert_eq!(f.client().try_claim(&f.player, &7), Err(Ok(Error::InsufficientFunds)));
+    assert_eq!(
+        f.client().try_claim(&f.player, &7),
+        Err(Ok(Error::InsufficientFunds))
+    );
     assert!(!f.client().has_claimed(&f.player, &7));
     assert_eq!(f.client().balance(), 69);
     f.client().fund(&f.admin, &1);
@@ -59,15 +97,28 @@ fn underfunded_claim_remains_available_after_top_up() {
 fn eligibility_and_players_are_independent() {
     let f = Fixture::new();
     f.client().fund(&f.admin, &140);
-    assert_eq!(f.client().try_claim(&f.player, &7), Err(Ok(Error::Ineligible)));
-    assert_eq!(f.client().try_claim(&f.player, &8), Err(Ok(Error::UnknownMilestone)));
+    assert_eq!(
+        f.client().try_claim(&f.player, &7),
+        Err(Ok(Error::Ineligible))
+    );
+    assert_eq!(
+        f.client().try_claim(&f.player, &8),
+        Err(Ok(Error::UnknownMilestone))
+    );
     let other = Address::generate(&f.env);
-    for day in 0..7 { f.day(day); f.client().check_in(&f.player); f.client().check_in(&other); }
+    for day in 0..7 {
+        f.day(day);
+        f.client().check_in(&f.player);
+        f.client().check_in(&other);
+    }
     f.client().claim(&f.player, &7);
     assert!(!f.client().has_claimed(&other, &7));
     f.client().claim(&other, &7);
     assert_eq!(f.tokens(&other), 70);
-    assert_eq!(f.client().try_claim(&f.player, &30), Err(Ok(Error::Ineligible)));
+    assert_eq!(
+        f.client().try_claim(&f.player, &30),
+        Err(Ok(Error::Ineligible))
+    );
 }
 
 #[test]
@@ -82,7 +133,10 @@ fn day_zero_repeats_boundaries_and_gaps() {
     let streak = f.client().check_in(&f.player);
     assert_eq!((streak.current, streak.best), (1, 2));
     f.day(2);
-    assert_eq!(f.client().try_check_in(&f.player), Err(Ok(Error::InvalidDay)));
+    assert_eq!(
+        f.client().try_check_in(&f.player),
+        Err(Ok(Error::InvalidDay))
+    );
 }
 
 #[test]
@@ -93,8 +147,14 @@ fn earned_milestone_survives_a_reset_but_cannot_be_reearned() {
     f.day(10);
     assert_eq!(f.client().check_in(&f.player).current, 1);
     f.client().claim(&f.player, &7);
-    for day in 11..17 { f.day(day); f.client().check_in(&f.player); }
-    assert_eq!(f.client().try_claim(&f.player, &7), Err(Ok(Error::AlreadyClaimed)));
+    for day in 11..17 {
+        f.day(day);
+        f.client().check_in(&f.player);
+    }
+    assert_eq!(
+        f.client().try_claim(&f.player, &7),
+        Err(Ok(Error::AlreadyClaimed))
+    );
 }
 
 #[test]
@@ -106,10 +166,16 @@ fn expiry_closes_claims_and_funding_and_opens_withdrawal() {
     f.env.ledger().with_mut(|l| l.timestamp = 200 * DAY - 1);
     f.client().claim(&f.player, &7);
     f.day(200);
-    assert_eq!(f.client().try_claim(&f.player, &30), Err(Ok(Error::Expired)));
+    assert_eq!(
+        f.client().try_claim(&f.player, &30),
+        Err(Ok(Error::Expired))
+    );
     assert_eq!(f.client().try_fund(&f.admin, &1), Err(Ok(Error::Expired)));
     assert_eq!(f.client().try_check_in(&f.player), Err(Ok(Error::Expired)));
-    assert_eq!(f.client().try_withdraw(&31), Err(Ok(Error::InsufficientFunds)));
+    assert_eq!(
+        f.client().try_withdraw(&31),
+        Err(Ok(Error::InsufficientFunds))
+    );
     f.client().withdraw(&10);
     f.client().withdraw(&20);
     assert_eq!(f.client().balance(), 0);
@@ -119,7 +185,12 @@ fn expiry_closes_claims_and_funding_and_opens_withdrawal() {
 #[test]
 fn invalid_deposits_and_failed_transfers_do_not_change_balance() {
     let f = Fixture::new();
-    for amount in [0, -1] { assert_eq!(f.client().try_fund(&f.admin, &amount), Err(Ok(Error::InvalidAmount))); }
+    for amount in [0, -1] {
+        assert_eq!(
+            f.client().try_fund(&f.admin, &amount),
+            Err(Ok(Error::InvalidAmount))
+        );
+    }
     assert!(f.client().try_fund(&f.admin, &10_001).is_err());
     assert_eq!(f.client().balance(), 0);
     assert_eq!(f.tokens(&f.admin), 10_000);
@@ -159,22 +230,45 @@ fn check_in_authorizes_verifier_not_player() {
     let f = Fixture::new();
     f.client().check_in(&f.player);
     assert_eq!(f.env.auths()[0].0, f.verifier);
-    assert_eq!(f.env.auths()[0].1.function, soroban_sdk::testutils::AuthorizedFunction::Contract((f.id.clone(), symbol_short!("check_in"), vec![&f.env, f.player.into_val(&f.env)])));
+    assert_eq!(
+        f.env.auths()[0].1.function,
+        soroban_sdk::testutils::AuthorizedFunction::Contract((
+            f.id.clone(),
+            symbol_short!("check_in"),
+            vec![&f.env, f.player.into_val(&f.env)]
+        ))
+    );
 }
 
 #[test]
 fn config_is_validated_and_cannot_be_replaced() {
     let f = Fixture::new();
     let terms = f.client().get_config();
-    assert_eq!(f.client().try_initialize(&f.admin, &f.verifier, &f.token, &terms.expires_at, &terms.milestones), Err(Ok(Error::AlreadyInitialized)));
+    assert_eq!(
+        f.client().try_initialize(
+            &f.admin,
+            &f.verifier,
+            &f.token,
+            &terms.expires_at,
+            &terms.milestones
+        ),
+        Err(Ok(Error::AlreadyInitialized))
+    );
     for (days, amount, expiry) in [(0, 1, DAY), (1, 0, DAY), (1, -1, DAY), (1, 1, 0)] {
         let id = f.env.register_contract(None, StreakCounter);
         let c = StreakCounterClient::new(&f.env, &id);
-        let mut map = Map::new(&f.env); map.set(days, amount);
-        assert_eq!(c.try_initialize(&f.admin, &f.verifier, &f.token, &expiry, &map), Err(Ok(Error::InvalidConfig)));
+        let mut map = Map::new(&f.env);
+        map.set(days, amount);
+        assert_eq!(
+            c.try_initialize(&f.admin, &f.verifier, &f.token, &expiry, &map),
+            Err(Ok(Error::InvalidConfig))
+        );
     }
     let id = f.env.register_contract(None, StreakCounter);
     let c = StreakCounterClient::new(&f.env, &id);
     assert_eq!(c.try_balance(), Err(Ok(Error::NotInitialized)));
-    assert_eq!(c.try_initialize(&f.admin, &f.verifier, &f.token, &DAY, &Map::new(&f.env)), Err(Ok(Error::InvalidConfig)));
+    assert_eq!(
+        c.try_initialize(&f.admin, &f.verifier, &f.token, &DAY, &Map::new(&f.env)),
+        Err(Ok(Error::InvalidConfig))
+    );
 }

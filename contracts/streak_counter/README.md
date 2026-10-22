@@ -64,10 +64,14 @@ its dependency resolution. To reproduce that isolation:
 cp -R contracts/streak_counter /tmp/streak-counter
 cd /tmp/streak-counter
 cargo fmt -- --check
-cargo test
-cargo clippy --all-targets -- -D warnings
-cargo build --release --target wasm32v1-none
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
+cargo build --locked --release --target wasm32v1-none
 ```
 
 Requires Rust and the `wasm32v1-none` target. Tests use the Soroban host and a real
 test Stellar Asset Contract for balances and rollback; no live funds are used.
+The crate-local lockfile pins a compatible SDK 21 dependency graph, including
+`ed25519-dalek` 2.2.0: the host's broad range otherwise selects v3 with an
+incompatible RNG interface. Cargo ignores this nested lockfile for workspace-wide
+commands, so use the isolated commands above for the reproducible focused check.

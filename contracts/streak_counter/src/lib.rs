@@ -1,6 +1,8 @@
 #![no_std]
 
-use soroban_sdk::{contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, Map};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, Map,
+};
 
 const DAY: u64 = 86_400;
 
@@ -52,7 +54,11 @@ enum Key {
 pub struct StreakCounter;
 
 fn config(env: &Env) -> Result<Config, Error> {
-    let config = env.storage().instance().get(&Key::Config).ok_or(Error::NotInitialized)?;
+    let config = env
+        .storage()
+        .instance()
+        .get(&Key::Config)
+        .ok_or(Error::NotInitialized)?;
     let ttl = env.storage().max_ttl();
     env.storage().instance().extend_ttl(ttl / 2, ttl);
     Ok(config)
@@ -73,12 +79,20 @@ fn active(env: &Env, config: &Config) -> Result<(), Error> {
 #[contractimpl]
 impl StreakCounter {
     /// Immutable pool terms. The verifier is a trusted puzzle-completion authority.
-    pub fn initialize(env: Env, admin: Address, verifier: Address, token: Address, expires_at: u64, milestones: Map<u32, i128>) -> Result<(), Error> {
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+        verifier: Address,
+        token: Address,
+        expires_at: u64,
+        milestones: Map<u32, i128>,
+    ) -> Result<(), Error> {
         if env.storage().instance().has(&Key::Config) {
             return Err(Error::AlreadyInitialized);
         }
         admin.require_auth();
-        if expires_at <= env.ledger().timestamp() || milestones.is_empty() || milestones.len() > 32 {
+        if expires_at <= env.ledger().timestamp() || milestones.is_empty() || milestones.len() > 32
+        {
             return Err(Error::InvalidConfig);
         }
         for (days, amount) in milestones.iter() {
@@ -86,7 +100,16 @@ impl StreakCounter {
                 return Err(Error::InvalidConfig);
             }
         }
-        env.storage().instance().set(&Key::Config, &Config { admin, verifier, token, expires_at, milestones });
+        env.storage().instance().set(
+            &Key::Config,
+            &Config {
+                admin,
+                verifier,
+                token,
+                expires_at,
+                milestones,
+            },
+        );
         config(&env)?;
         Ok(())
     }
@@ -98,18 +121,25 @@ impl StreakCounter {
         cfg.verifier.require_auth();
         let day = env.ledger().timestamp() / DAY;
         let key = Key::Streak(player.clone());
-        let mut streak: Streak = env.storage().persistent().get(&key).unwrap_or(Streak { last_day: day, current: 0, best: 0 });
+        let mut streak: Streak = env.storage().persistent().get(&key).unwrap_or(Streak {
+            last_day: day,
+            current: 0,
+            best: 0,
+        });
         if streak.current > 0 && day < streak.last_day {
             return Err(Error::InvalidDay);
         }
         if streak.current == 0 || day != streak.last_day {
             streak.current = if streak.current > 0 && day - streak.last_day == 1 {
                 streak.current.checked_add(1).ok_or(Error::Overflow)?
-            } else { 1 };
+            } else {
+                1
+            };
             streak.last_day = day;
             streak.best = streak.best.max(streak.current);
             env.storage().persistent().set(&key, &streak);
-            env.events().publish((symbol_short!("check_in"), player), streak.clone());
+            env.events()
+                .publish((symbol_short!("check_in"), player), streak.clone());
         }
         retain(&env, &key);
         Ok(streak)
@@ -123,7 +153,11 @@ impl StreakCounter {
             return Err(Error::InvalidAmount);
         }
         from.require_auth();
-        token::Client::new(&env, &cfg.token).transfer(&from, &env.current_contract_address(), &amount);
+        token::Client::new(&env, &cfg.token).transfer(
+            &from,
+            &env.current_contract_address(),
+            &amount,
+        );
         env.events().publish((symbol_short!("fund"), from), amount);
         Ok(())
     }
@@ -132,7 +166,10 @@ impl StreakCounter {
         let cfg = config(&env)?;
         active(&env, &cfg)?;
         player.require_auth();
-        let amount = cfg.milestones.get(milestone).ok_or(Error::UnknownMilestone)?;
+        let amount = cfg
+            .milestones
+            .get(milestone)
+            .ok_or(Error::UnknownMilestone)?;
         let key = Key::Claimed(player.clone(), milestone);
         if env.storage().persistent().has(&key) {
             return Err(Error::AlreadyClaimed);
@@ -149,7 +186,8 @@ impl StreakCounter {
         env.storage().persistent().set(&key, &true);
         retain(&env, &key);
         client.transfer(&env.current_contract_address(), &player, &amount);
-        env.events().publish((symbol_short!("claim"), player, milestone), amount);
+        env.events()
+            .publish((symbol_short!("claim"), player, milestone), amount);
         Ok(amount)
     }
 
@@ -157,23 +195,34 @@ impl StreakCounter {
     pub fn withdraw(env: Env, amount: i128) -> Result<(), Error> {
         let cfg = config(&env)?;
         cfg.admin.require_auth();
-        if env.ledger().timestamp() < cfg.expires_at { return Err(Error::NotExpired); }
-        if amount <= 0 { return Err(Error::InvalidAmount); }
+        if env.ledger().timestamp() < cfg.expires_at {
+            return Err(Error::NotExpired);
+        }
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
         let client = token::Client::new(&env, &cfg.token);
-        if client.balance(&env.current_contract_address()) < amount { return Err(Error::InsufficientFunds); }
+        if client.balance(&env.current_contract_address()) < amount {
+            return Err(Error::InsufficientFunds);
+        }
         client.transfer(&env.current_contract_address(), &cfg.admin, &amount);
-        env.events().publish((symbol_short!("withdraw"), cfg.admin), amount);
+        env.events()
+            .publish((symbol_short!("withdraw"), cfg.admin), amount);
         Ok(())
     }
 
-    pub fn get_config(env: Env) -> Result<Config, Error> { config(&env) }
+    pub fn get_config(env: Env) -> Result<Config, Error> {
+        config(&env)
+    }
 
     /// Recorded streak; `best` preserves earned eligibility even after a gap.
     pub fn get_streak(env: Env, player: Address) -> Result<Option<Streak>, Error> {
         config(&env)?;
         let key = Key::Streak(player);
         let value = env.storage().persistent().get(&key);
-        if value.is_some() { retain(&env, &key); }
+        if value.is_some() {
+            retain(&env, &key);
+        }
         Ok(value)
     }
 
@@ -181,7 +230,9 @@ impl StreakCounter {
         config(&env)?;
         let key = Key::Claimed(player, milestone);
         let claimed = env.storage().persistent().has(&key);
-        if claimed { retain(&env, &key); }
+        if claimed {
+            retain(&env, &key);
+        }
         Ok(claimed)
     }
 

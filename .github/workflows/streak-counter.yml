@@ -22,20 +22,7 @@ jobs:
       - name: Format, tests, Clippy and Wasm
         working-directory: ${{ runner.temp }}/streak-counter
         run: |
-          cargo fmt
-          cargo generate-lockfile
-          # SDK 21's broad dalek range admits v3, whose RNG API is incompatible.
-          cargo update -p ed25519-dalek@3.0.0 --precise 2.2.0
-          for file in src/lib.rs src/test.rs Cargo.lock; do
-            echo "FORMATTED_SOURCE:$file:$(base64 -w0 "$file")"
-          done
-          cargo test
-          cargo clippy --all-targets -- -D warnings
-          cargo build --release --target wasm32v1-none
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: formatted-source
-          path: |
-            ${{ runner.temp }}/streak-counter/src
-            ${{ runner.temp }}/streak-counter/Cargo.lock
+          cargo fmt -- --check
+          cargo test --locked
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo build --locked --release --target wasm32v1-none
