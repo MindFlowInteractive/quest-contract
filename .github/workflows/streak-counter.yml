@@ -1,0 +1,33 @@
+name: Streak counter
+on:
+  push:
+    branches: ["feat/367-streak-reward-pool"]
+  pull_request:
+    paths: ["contracts/streak_counter/**", ".github/workflows/streak-counter.yml", "Cargo.toml"]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32v1-none
+      # The repository contains independently versioned contracts. Validate this
+      # crate without resolving every unrelated workspace member's dependencies.
+      - name: Isolate contract
+        run: cp -R contracts/streak_counter "$RUNNER_TEMP/streak-counter"
+      - name: Format, tests, Clippy and Wasm
+        working-directory: ${{ runner.temp }}/streak-counter
+        run: |
+          cargo fmt
+          cargo test
+          cargo clippy --all-targets -- -D warnings
+          cargo build --release --target wasm32v1-none
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: formatted-source
+          path: ${{ runner.temp }}/streak-counter/src
