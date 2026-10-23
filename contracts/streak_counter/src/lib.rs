@@ -34,6 +34,10 @@ pub struct Config {
     pub milestones: Map<u32, i128>,
 }
 
+/// Per-player streak state.
+/// - `last_day`: UTC ledger day (`timestamp / DAY`) of the most recent recorded completion.
+/// - `current`: consecutive completed days ending at `last_day` (0 = no active streak).
+/// - `best`: highest `current` ever reached; survives resets so earned milestones stay valid.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Streak {
@@ -74,6 +78,29 @@ fn active(env: &Env, config: &Config) -> Result<(), Error> {
         return Err(Error::Expired);
     }
     Ok(())
+}
+
+/// Applies a completion on UTC `day` to `state`.
+/// - Same day as `last_day` (with an active streak): no change (no double counting).
+/// - Exactly the next day: increment `current`.
+/// - Any gap (or first ever completion): reset `current` to 1.
+/// - Earlier than `last_day`: rejected.
+/// Returns `true` if the state changed.
+fn apply_completion(state: &mut Streak, day: u64) -> Result<bool, Error> {
+    if state.current > 0 && day < state.last_day {
+        return Err(Error::InvalidDay);
+    }
+    if state.current > 0 && day == state.last_day {
+        return Ok(false);
+    }
+    state.current = if state.current > 0 && day - state.last_day == 1 {
+        state.current.checked_add(1).ok_or(Error::Overflow)?
+    } else {
+        1
+    };
+    state.last_day = day;
+    state.best = state.best.max(state.current);
+    Ok(true)
 }
 
 #[contractimpl]
@@ -126,17 +153,7 @@ impl StreakCounter {
             current: 0,
             best: 0,
         });
-        if streak.current > 0 && day < streak.last_day {
-            return Err(Error::InvalidDay);
-        }
-        if streak.current == 0 || day != streak.last_day {
-            streak.current = if streak.current > 0 && day - streak.last_day == 1 {
-                streak.current.checked_add(1).ok_or(Error::Overflow)?
-            } else {
-                1
-            };
-            streak.last_day = day;
-            streak.best = streak.best.max(streak.current);
+        if apply_completion(&mut streak, day)? {
             env.storage().persistent().set(&key, &streak);
             env.events()
                 .publish((symbol_short!("check_in"), player), streak.clone());
