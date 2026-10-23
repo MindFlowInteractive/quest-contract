@@ -14,3 +14,6 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 
 [features]
 testutils = ["soroban-sdk/testutils"]
+
+# Note: commit-reveal support for puzzle submissions is implemented in
+# contracts/commit_reveal; this crate only tracks the testutils feature.
