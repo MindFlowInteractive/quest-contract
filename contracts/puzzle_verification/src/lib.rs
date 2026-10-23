@@ -16,11 +16,20 @@ pub struct PuzzleMeta {
 }
 
 #[contracttype]
+#[derive(Clone)]
+pub struct CommitWindow {
+    pub start_ledger: u32,
+    pub end_ledger: u32,
+}
+
+#[contracttype]
 pub enum DataKey {
     Admin,
     Puzzle(u32),
     Completed(Address, u32),
     Rewards(Address),
+    Commitment(Address, u32),
+    CommitWindow(u32),
 }
 
 #[contract]
@@ -72,6 +81,65 @@ impl PuzzleVerification {
         env.storage()
             .instance()
             .set(&DataKey::Puzzle(puzzle_id), &meta);
+    }
+
+    /// Admin sets the ledger window during which commitments for a puzzle are accepted.
+    pub fn set_commit_window(env: Env, puzzle_id: u32, start_ledger: u32, end_ledger: u32) {
+        Self::require_admin(&env);
+
+        if end_ledger <= start_ledger {
+            panic!("invalid commit window");
+        }
+
+        let window = CommitWindow {
+            start_ledger,
+            end_ledger,
+        };
+        env.storage()
+            .instance()
+            .set(&DataKey::CommitWindow(puzzle_id), &window);
+    }
+
+    /// Player commits a hash of their solution preimage for a puzzle.
+    /// Commitments are write-once per (player, puzzle) and must fall inside the commit window.
+    pub fn commit_solution(env: Env, player: Address, puzzle_id: u32, commitment: BytesN<32>) {
+        player.require_auth();
+
+        if Self::is_completed(env.clone(), player.clone(), puzzle_id) {
+            panic!("puzzle already completed");
+        }
+
+        let window: CommitWindow = env
+            .storage()
+            .instance()
+            .get(&DataKey::CommitWindow(puzzle_id))
+            .expect("commit window");
+
+        let current = env.ledger().sequence();
+        if current < window.start_ledger || current > window.end_ledger {
+            panic!("commit window closed");
+        }
+
+        let key = DataKey::Commitment(player.clone(), puzzle_id);
+        if env.storage().instance().has(&key) {
+            panic!("already committed");
+        }
+
+        env.storage().instance().set(&key, &commitment);
+    }
+
+    /// Returns the stored commitment for a player and puzzle, if any.
+    pub fn get_commitment(env: Env, player: Address, puzzle_id: u32) -> Option<BytesN<32>> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Commitment(player, puzzle_id))
+    }
+
+    /// Returns the commit window for a puzzle, if configured.
+    pub fn get_commit_window(env: Env, puzzle_id: u32) -> Option<CommitWindow> {
+        env.storage()
+            .instance()
+            .get(&DataKey::CommitWindow(puzzle_id))
     }
 
     pub fn verify_solution(
@@ -205,5 +273,73 @@ mod test {
         client.set_puzzle(&42, &hash, &(now - 100), &(now - 50), &1, &10);
 
         let _ = client.verify_solution(&player, &42, &preimage);
+    }
+
+    #[test]
+    fn test_commit_stored_and_retrievable() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, PuzzleVerification);
+        let client = PuzzleVerificationClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let player = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.initialize(&admin);
+
+        env.ledger().set_sequence_number(100);
+        client.set_commit_window(&1, &100, &200);
+
+        let preimage = Bytes::from_array(&env, &[9u8; 4]);
+        let commitment: BytesN<32> = env.crypto().sha256(&preimage).into();
+
+        client.commit_solution(&player, &1, &commitment);
+        assert_eq!(client.get_commitment(&player, &1), Some(commitment));
+    }
+
+    #[test]
+    #[should_panic(expected = "already committed")]
+    fn test_duplicate_commit_rejected() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, PuzzleVerification);
+        let client = PuzzleVerificationClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let player = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.initialize(&admin);
+
+        env.ledger().set_sequence_number(100);
+        client.set_commit_window(&1, &100, &200);
+
+        let preimage = Bytes::from_array(&env, &[9u8; 4]);
+        let commitment: BytesN<32> = env.crypto().sha256(&preimage).into();
+
+        client.commit_solution(&player, &1, &commitment);
+        client.commit_solution(&player, &1, &commitment);
+    }
+
+    #[test]
+    #[should_panic(expected = "commit window closed")]
+    fn test_late_commit_rejected() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, PuzzleVerification);
+        let client = PuzzleVerificationClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let player = Address::generate(&env);
+
+        env.mock_all_auths();
+        client.initialize(&admin);
+
+        client.set_commit_window(&1, &100, &200);
+
+        env.ledger().set_sequence_number(201);
+
+        let preimage = Bytes::from_array(&env, &[9u8; 4]);
+        let commitment: BytesN<32> = env.crypto().sha256(&preimage).into();
+
+        client.commit_solution(&player, &1, &commitment);
     }
 }
