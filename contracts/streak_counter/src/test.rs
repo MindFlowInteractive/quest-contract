@@ -1,7 +1,7 @@
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, IssuerFlags, Ledger},
-    token, vec, IntoVal,
+    testutils::{Address as _, Events, IssuerFlags, Ledger},
+    token, vec, IntoVal, Symbol, TryFromVal,
 };
 
 struct Fixture {
@@ -55,6 +55,119 @@ impl Fixture {
     fn tokens(&self, who: &Address) -> i128 {
         token::Client::new(&self.env, &self.token).balance(who)
     }
+}
+
+fn freeze_used_events(f: &Fixture) -> u32 {
+    let mut count = 0;
+    for (_, topics, _) in f.env.events().all().iter() {
+        if let Some(topic) = topics.get(0) {
+            if let Ok(sym) = Symbol::try_from_val(&f.env, &topic) {
+                if sym == symbol_short!("frz_used") {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
+
+#[test]
+fn freeze_prevents_reset_for_one_missed_day_and_emits_event() {
+    let f = Fixture::new();
+    f.reach(3);
+    assert_eq!(f.client().get_freezes(&f.player), 0);
+    assert_eq!(f.client().grant_freeze(&f.player, &1), 1);
+    f.day(4); // missed day 3
+    let streak = f.client().check_in(&f.player);
+    assert_eq!((streak.current, streak.best), (4, 4));
+    assert_eq!(f.client().get_freezes(&f.player), 0);
+    assert_eq!(freeze_used_events(&f), 1);
+}
+
+#[test]
+fn freeze_is_not_spent_on_consecutive_days() {
+    let f = Fixture::new();
+    f.client().grant_freeze(&f.player, &2);
+    f.reach(5);
+    assert_eq!(f.client().get_freezes(&f.player), 2);
+    assert_eq!(freeze_used_events(&f), 0);
+}
+
+#[test]
+fn freeze_does_not_cover_two_missed_days() {
+    let f = Fixture::new();
+    f.reach(3);
+    f.client().grant_freeze(&f.player, &2);
+    f.day(5); // missed days 3 and 4
+    let streak = f.client().check_in(&f.player);
+    assert_eq!((streak.current, streak.best), (1, 3));
+    assert_eq!(f.client().get_freezes(&f.player), 2);
+    assert_eq!(freeze_used_events(&f), 0);
+}
+
+#[test]
+fn freeze_limit_per_rolling_period_is_enforced() {
+    let f = Fixture::new();
+    f.reach(3);
+    f.client().grant_freeze(&f.player, &5);
+    f.day(4);
+    assert_eq!(f.client().check_in(&f.player).current, 4); // freeze 1
+    f.day(5);
+    assert_eq!(f.client().check_in(&f.player).current, 5);
+    f.day(7);
+    assert_eq!(f.client().check_in(&f.player).current, 6); // freeze 2
+    assert_eq!(f.client().get_freezes(&f.player), 3);
+    f.day(8);
+    assert_eq!(f.client().check_in(&f.player).current, 7);
+    f.day(10);
+    let streak = f.client().check_in(&f.player); // third missed day in window: limit hit
+    assert_eq!((streak.current, streak.best), (1, 7));
+    assert_eq!(f.client().get_freezes(&f.player), 3);
+    assert_eq!(freeze_used_events(&f), 2);
+}
+
+#[test]
+fn freeze_limit_rolls_over_after_thirty_days() {
+    let f = Fixture::new();
+    f.reach(3);
+    f.client().grant_freeze(&f.player, &3);
+    f.day(4);
+    assert_eq!(f.client().check_in(&f.player).current, 4); // freeze 1 (day 4)
+    f.day(5);
+    assert_eq!(f.client().check_in(&f.player).current, 5);
+    f.day(7);
+    assert_eq!(f.client().check_in(&f.player).current, 6); // freeze 2 (day 7)
+    for day in 8..35 {
+        f.day(day);
+        f.client().check_in(&f.player);
+    }
+    assert_eq!(f.client().get_streak(&f.player).unwrap().current, 33);
+    f.day(36); // missed day 35; the day-4 use is 32 days old, the day-7 use is 29
+    let streak = f.client().check_in(&f.player);
+    assert_eq!((streak.current, streak.best), (34, 34));
+    assert_eq!(f.client().get_freezes(&f.player), 0);
+    assert_eq!(freeze_used_events(&f), 3);
+}
+
+#[test]
+fn grant_freeze_requires_admin_and_positive_amount() {
+    let f = Fixture::new();
+    assert_eq!(
+        f.client().try_grant_freeze(&f.player, &0),
+        Err(Ok(Error::InvalidAmount))
+    );
+    f.env.mock_auths(&[]);
+    assert!(f.client().try_grant_freeze(&f.player, &1).is_err());
+    assert_eq!(f.client().get_freezes(&f.player), 0);
+}
+
+#[test]
+fn freeze_balances_are_per_player() {
+    let f = Fixture::new();
+    let other = Address::generate(&f.env);
+    f.client().grant_freeze(&f.player, &2);
+    assert_eq!(f.client().get_freezes(&f.player), 2);
+    assert_eq!(f.client().get_freezes(&other), 0);
 }
 
 #[test]
