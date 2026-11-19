@@ -3,9 +3,15 @@
 Implements #367 in a new `streak_counter` contract. At implementation time,
 the prerequisite #365/#366 contract was absent from `main`. This includes the
 minimal ledger-time streak foundation needed to exercise real reward eligibility.
-It does **not** implement freeze-token issuance/consumption or claim to close
-#366. Its integration with that future stage requires an explicit review of the
-streak update rules and storage layout.
+
+Freeze tokens (#366) are implemented here. A player with a freeze balance
+spends one automatically when they check in after exactly one missed day, so
+the streak continues instead of resetting. A freeze covers one missed day only;
+a longer gap still resets. At most 2 freezes can be spent in any rolling
+30-day window, counted from the days freezes were spent. Only the admin can
+grant freezes, with `grant_freeze(player, amount)`; `get_freezes(player)`
+reads a player's balance. A spent freeze publishes a `frz_used` event with
+the remaining balance, and a grant publishes `frz_grant`.
 
 ## Terms and trust
 

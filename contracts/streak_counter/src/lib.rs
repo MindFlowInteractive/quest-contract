@@ -2,9 +2,13 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, Map,
+    Vec,
 };
 
 const DAY: u64 = 86_400;
+/// A freeze can be spent at most twice in any rolling 30-day window.
+const FREEZE_PERIOD_DAYS: u64 = 30;
+const MAX_FREEZES_PER_PERIOD: u32 = 2;
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -48,6 +52,8 @@ enum Key {
     Config,
     Streak(Address),
     Claimed(Address, u32),
+    Freezes(Address),
+    FreezeUses(Address),
 }
 
 #[contract]
@@ -74,6 +80,49 @@ fn active(env: &Env, config: &Config) -> Result<(), Error> {
         return Err(Error::Expired);
     }
     Ok(())
+}
+
+fn freeze_balance(env: &Env, player: &Address) -> u32 {
+    env.storage()
+        .persistent()
+        .get(&Key::Freezes(player.clone()))
+        .unwrap_or(0)
+}
+
+fn freeze_uses(env: &Env, player: &Address) -> Vec<u64> {
+    env.storage()
+        .persistent()
+        .get(&Key::FreezeUses(player.clone()))
+        .unwrap_or(Vec::new(env))
+}
+
+/// Spend one freeze if the player has one and is under the rolling limit.
+/// Returns the remaining balance, or `None` when no freeze can be spent.
+/// `day` is the check-in day the freeze is spent on.
+fn try_consume_freeze(env: &Env, player: &Address, day: u64) -> Result<Option<u32>, Error> {
+    let balance = freeze_balance(env, player);
+    if balance == 0 {
+        return Ok(None);
+    }
+    let uses = freeze_uses(env, player);
+    let mut fresh = Vec::new(env);
+    for use_day in uses.iter() {
+        if day < use_day + FREEZE_PERIOD_DAYS {
+            fresh.push_back(use_day);
+        }
+    }
+    if fresh.len() >= MAX_FREEZES_PER_PERIOD {
+        return Ok(None);
+    }
+    let remaining = balance - 1;
+    let freeze_key = Key::Freezes(player.clone());
+    env.storage().persistent().set(&freeze_key, &remaining);
+    fresh.push_back(day);
+    let uses_key = Key::FreezeUses(player.clone());
+    env.storage().persistent().set(&uses_key, &fresh);
+    retain(env, &freeze_key);
+    retain(env, &uses_key);
+    Ok(Some(remaining))
 }
 
 #[contractimpl]
@@ -130,11 +179,31 @@ impl StreakCounter {
             return Err(Error::InvalidDay);
         }
         if streak.current == 0 || day != streak.last_day {
-            streak.current = if streak.current > 0 && day - streak.last_day == 1 {
-                streak.current.checked_add(1).ok_or(Error::Overflow)?
+            let gap = if streak.current > 0 {
+                day - streak.last_day
             } else {
-                1
+                0
             };
+            if gap == 1 {
+                streak.current = streak.current.checked_add(1).ok_or(Error::Overflow)?;
+            } else if gap == 2 {
+                // Exactly one missed day: spend a freeze to keep the streak
+                // alive instead of resetting it. No freeze, or the rolling
+                // limit reached, means the streak resets as before.
+                match try_consume_freeze(&env, &player, day)? {
+                    Some(remaining) => {
+                        streak.current = streak.current.checked_add(1).ok_or(Error::Overflow)?;
+                        env.events()
+                            .publish((symbol_short!("frz_used"), player.clone()), remaining);
+                    }
+                    None => {
+                        streak.current = 1;
+                    }
+                }
+            } else {
+                // A freeze only covers one missed day; longer gaps reset.
+                streak.current = 1;
+            }
             streak.last_day = day;
             streak.best = streak.best.max(streak.current);
             env.storage().persistent().set(&key, &streak);
@@ -160,6 +229,26 @@ impl StreakCounter {
         );
         env.events().publish((symbol_short!("fund"), from), amount);
         Ok(())
+    }
+
+    /// Only the admin can grant freeze tokens, which a player spends
+    /// automatically to protect a streak from one missed day.
+    pub fn grant_freeze(env: Env, player: Address, amount: u32) -> Result<u32, Error> {
+        let cfg = config(&env)?;
+        active(&env, &cfg)?;
+        cfg.admin.require_auth();
+        if amount == 0 {
+            return Err(Error::InvalidAmount);
+        }
+        let key = Key::Freezes(player.clone());
+        let balance = freeze_balance(&env, &player)
+            .checked_add(amount)
+            .ok_or(Error::Overflow)?;
+        env.storage().persistent().set(&key, &balance);
+        retain(&env, &key);
+        env.events()
+            .publish((symbol_short!("frz_grant"), player), balance);
+        Ok(balance)
     }
 
     pub fn claim(env: Env, player: Address, milestone: u32) -> Result<i128, Error> {
@@ -224,6 +313,16 @@ impl StreakCounter {
             retain(&env, &key);
         }
         Ok(value)
+    }
+
+    pub fn get_freezes(env: Env, player: Address) -> Result<u32, Error> {
+        config(&env)?;
+        let key = Key::Freezes(player);
+        let value: Option<u32> = env.storage().persistent().get(&key);
+        if value.is_some() {
+            retain(&env, &key);
+        }
+        Ok(value.unwrap_or(0))
     }
 
     pub fn has_claimed(env: Env, player: Address, milestone: u32) -> Result<bool, Error> {
