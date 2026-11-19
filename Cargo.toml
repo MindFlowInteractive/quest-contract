@@ -112,6 +112,10 @@ members = [
   "contracts/referral_rewards",
   "contracts/prediction_aggregator",
   "contracts/swap_aggregator",
+  "contracts/spending_limit",
+  "contracts/dispute_bond",
+  "contracts/token_streaming",
+  "contracts/unlock_keys",
 ]
 
 [workspace.dependencies]
