@@ -288,3 +288,48 @@ pub struct PuzzleUnlockedEvent {
     pub puzzle_id: u32,
     pub key_type: u32,
 }
+#![no_std]
+
+use soroban_sdk::{contract, contracterror, contractevent, contractimpl, contracttype, Address, Env};
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum UnlockError {
+    NotAuthorized = 1,
+    PuzzleKeyNotConfigured = 2,
+    InsufficientKeys = 3,
+    AlreadyUnlocked = 4,
+    InvalidAmount = 5,
+    UpgradeRatioNotConfigured = 6,
+    InvalidTier = 7,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DataKey {
+    Admin,
+    PuzzleKey(u32),           // puzzle_id -> required key_type (tier)
+    KeyBalance(Address, u32), // (player, key_type) -> balance
+    TotalSupply(u32),         // key_type -> circulating supply
+    BurnRatio(u32),           // from_tier -> keys required to mint 1 key of next tier
+    Unlocked(Address, u32),   // (player, puzzle_id) -> bool
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PuzzleUnlockedEvent {
+    pub player: Address,
+    pub puzzle_id: u32,
+    pub key_type: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct KeyUpgradedEvent {
+    pub player: Address,
+    pub from_tier: u32,
+    pub to_tier: u32,
+    pub burned_amount: u32,
+    pub minted_amount: u32,
+}
