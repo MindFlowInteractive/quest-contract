@@ -2,6 +2,7 @@
 target/
 Cargo.lock
 !contracts/streak_counter/Cargo.lock
+!contracts/circuit_breaker/Cargo.lock
 **/*.rs.bk
 
 # Soroban
