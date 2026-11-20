@@ -1,0 +1,38 @@
+name: Circuit breaker
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "contracts/circuit_breaker/**"
+      - ".github/workflows/circuit-breaker.yml"
+      - "Cargo.toml"
+  pull_request:
+    paths:
+      - "contracts/circuit_breaker/**"
+      - ".github/workflows/circuit-breaker.yml"
+      - "Cargo.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32v1-none
+      # Contracts in this repository are independently versioned; validate this
+      # crate without resolving every unrelated workspace member.
+      - name: Isolate contract
+        run: cp -R contracts/circuit_breaker "$RUNNER_TEMP/circuit-breaker"
+      - name: Format, tests, Clippy and Wasm
+        working-directory: ${{ runner.temp }}/circuit-breaker
+        run: |
+          cargo fmt -- --check
+          cargo test --locked
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo build --locked --release --target wasm32v1-none

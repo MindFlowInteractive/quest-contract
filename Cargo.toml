@@ -116,6 +116,7 @@ members = [
   "contracts/dispute_bond",
   "contracts/token_streaming",
   "contracts/unlock_keys",
+  "contracts/circuit_breaker",
 ]
 
 [workspace.dependencies]
