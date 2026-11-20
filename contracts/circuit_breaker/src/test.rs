@@ -190,7 +190,7 @@ fn single_approval_does_not_pause() {
     assert!(!f.client.is_paused());
     assert_eq!(f.client.get_status().pending_approvals, 1);
 
-    let proposal = f.client.get_pause_proposal(id);
+    let proposal = f.client.get_pause_proposal(&id);
     assert_eq!(proposal.status, ProposalStatus::Pending);
     assert_eq!(proposal.approvals.len(), 1);
 }
@@ -209,7 +209,7 @@ fn quorum_trips_breaker_immediately() {
     assert_eq!(state.reason, String::from_str(&f.env, "exploit"));
     assert_eq!(state.total_pauses, 1);
 
-    let proposal = f.client.get_pause_proposal(id);
+    let proposal = f.client.get_pause_proposal(&id);
     assert_eq!(proposal.status, ProposalStatus::Executed);
     assert_eq!(proposal.executed_at, 1_000);
     assert_eq!(f.client.get_pause_history().len(), 1);
@@ -264,7 +264,7 @@ fn only_one_pending_proposal_and_only_proposer_can_cancel() {
 
     f.client.cancel_pause_proposal(&f.g2, &id);
     assert_eq!(
-        f.client.get_pause_proposal(id).status,
+        f.client.get_pause_proposal(&id).status,
         ProposalStatus::Canceled
     );
     let next = f
@@ -297,7 +297,7 @@ fn paused_breaker_rejects_non_allowlisted_functions() {
         .is_ok());
     assert!(f
         .client
-        .try_assert_callable(&symbol_short!("request_unpause"))
+        .try_assert_callable(&Symbol::new(&f.env, "request_unpause"))
         .is_ok());
 }
 
@@ -326,7 +326,7 @@ fn allowlist_can_be_extended_by_admin_only() {
     // Critical unpause functions can never be removed from the allowlist.
     assert!(f
         .client
-        .try_disallow_function(&f.admin, &symbol_short!("execute_unpause"))
+        .try_disallow_function(&f.admin, &Symbol::new(&f.env, "execute_unpause"))
         .is_err());
     assert!(f
         .client

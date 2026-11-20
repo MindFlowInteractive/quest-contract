@@ -150,7 +150,7 @@ impl CircuitBreaker {
             }
         }
         proposal.approvals.push_back(guardian.clone());
-        let approvals = proposal.approvals.len() as u32;
+        let approvals = proposal.approvals.len();
 
         if approvals >= config.quorum {
             let mut state = get_state(&env);
@@ -321,12 +321,7 @@ impl CircuitBreaker {
         let state = get_state(&env);
         let now = env.ledger().timestamp();
         let seconds_until_unpause = if state.active {
-            let earliest = state.paused_at + config.unpause_delay;
-            if earliest > now {
-                earliest - now
-            } else {
-                0
-            }
+            (state.paused_at + config.unpause_delay).saturating_sub(now)
         } else {
             0
         };
@@ -337,7 +332,7 @@ impl CircuitBreaker {
             for id in 0..count {
                 let proposal = get_proposal(&env, id)?;
                 if proposal.status == ProposalStatus::Pending {
-                    pending_approvals = proposal.approvals.len() as u32;
+                    pending_approvals = proposal.approvals.len();
                     break;
                 }
             }
