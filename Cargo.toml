@@ -38,6 +38,7 @@ members = [
   "contracts/vesting_schedule",
   "contracts/insurance",
   "contracts/whitelist",
+  "contracts/item_durability",
   "contracts/anti_bot",
   "contracts/skill_rating",
   "contracts/governance",
