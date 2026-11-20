@@ -126,3 +126,90 @@ fn test_burn_reduces_supply() {
     assert_eq!(c.balance(&ctx.player1, &ctx.silver), 3);
     assert_eq!(c.total_supply(&ctx.silver), 3);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::{testutils::Address as _, Env};
+
+    fn setup_env() -> (Env, Address, Address, Address, UnlockKeysContractClient<'static>) {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(UnlockKeysContract, ());
+        let client = UnlockKeysContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let player1 = Address::generate(&env);
+        let player2 = Address::generate(&env);
+
+        client.initialize(&admin);
+
+        // Leak client lifetime for test helper ergonomics in no_std test module
+        let leaked_client: UnlockKeysContractClient<'static> =
+            unsafe { core::mem::transmute(client) };
+
+        (env, admin, player1, player2, leaked_client)
+    }
+
+    #[test]
+    fn test_open_consumes_one_key_and_records_unlock() {
+        let (_env, admin, player1, player2, client) = setup_env();
+        let puzzle_id = 101;
+        let key_type = 7;
+
+        client.set_puzzle_key(&admin, &puzzle_id, &key_type);
+        client.grant_keys(&admin, &player1, &key_type, &3);
+
+        assert_eq!(client.is_unlocked(&player1, &puzzle_id), false);
+        assert_eq!(client.open(&player1, &puzzle_id), true);
+
+        // Consumed exactly 1 key (3 -> 2)
+        assert_eq!(client.key_balance(&player1, &key_type), 2);
+        assert_eq!(client.is_unlocked(&player1, &puzzle_id), true);
+
+        // Other players remain unaffected
+        assert_eq!(client.is_unlocked(&player2, &puzzle_id), false);
+    }
+
+    #[test]
+    fn test_rejects_when_player_lacks_key() {
+        let (_env, admin, player1, _player2, client) = setup_env();
+        let puzzle_id = 102;
+        let key_type = 5;
+        let other_key_type = 9;
+
+        client.set_puzzle_key(&admin, &puzzle_id, &key_type);
+        client.grant_keys(&admin, &player1, &other_key_type, &2);
+
+        let res = client.try_open(&player1, &puzzle_id);
+        assert_eq!(res, Err(Ok(UnlockError::InsufficientKeys)));
+        assert_eq!(client.is_unlocked(&player1, &puzzle_id), false);
+        assert_eq!(client.key_balance(&player1, &other_key_type), 2);
+    }
+
+    #[test]
+    fn test_prevents_opening_same_puzzle_twice() {
+        let (_env, admin, player1, _player2, client) = setup_env();
+        let puzzle_id = 103;
+        let key_type = 2;
+
+        client.set_puzzle_key(&admin, &puzzle_id, &key_type);
+        client.grant_keys(&admin, &player1, &key_type, &2);
+
+        assert_eq!(client.open(&player1, &puzzle_id), true);
+        assert_eq!(client.key_balance(&player1, &key_type), 1);
+
+        // Second attempt fails even though player still has another key
+        let second_open = client.try_open(&player1, &puzzle_id);
+        assert_eq!(second_open, Err(Ok(UnlockError::AlreadyUnlocked)));
+        assert_eq!(client.key_balance(&player1, &key_type), 1);
+    }
+
+    #[test]
+    fn test_rejects_unconfigured_puzzle() {
+        let (_env, _admin, player1, _player2, client) = setup_env();
+        let res = client.try_open(&player1, &999);
+        assert_eq!(res, Err(Ok(UnlockError::PuzzleKeyNotConfigured)));
+    }
+}
