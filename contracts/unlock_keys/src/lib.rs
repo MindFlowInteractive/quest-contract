@@ -256,3 +256,35 @@ impl UnlockKeysContract {
 
 #[cfg(test)]
 mod test;
+
+#![no_std]
+
+use soroban_sdk::{contract, contracterror, contractevent, contractimpl, contracttype, Address, Env};
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum UnlockError {
+    NotAuthorized = 1,
+    PuzzleKeyNotConfigured = 2,
+    InsufficientKeys = 3,
+    AlreadyUnlocked = 4,
+    InvalidAmount = 5,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DataKey {
+    Admin,
+    PuzzleKey(u32),          // puzzle_id -> required key_type
+    KeyBalance(Address, u32), // (player, key_type) -> balance
+    Unlocked(Address, u32),   // (player, puzzle_id) -> bool
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PuzzleUnlockedEvent {
+    pub player: Address,
+    pub puzzle_id: u32,
+    pub key_type: u32,
+}
