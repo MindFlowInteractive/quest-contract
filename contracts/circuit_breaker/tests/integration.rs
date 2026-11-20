@@ -76,13 +76,14 @@ impl Integration {
         let vault = GuardedVaultClient::new(&env, &vault_id);
         vault.initialize(&breaker_id);
 
+        let user = Address::generate(&env);
         Self {
             env,
             breaker,
             vault,
             admin,
             g2,
-            user: Address::generate(&env),
+            user,
         }
     }
 
