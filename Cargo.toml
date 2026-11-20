@@ -12,6 +12,7 @@ members = [
   "contracts/battle_pass",
   "contracts/bridge",
   "contracts/crafting",
+  "contracts/creator_registry",
   "contracts/daily_rewards",
   "contracts/streak_counter",
   "contracts/energy",
