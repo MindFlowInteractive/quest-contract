@@ -13,6 +13,7 @@ members = [
   "contracts/bridge",
   "contracts/crafting",
   "contracts/mystery_box",
+  "contracts/seed_beacon",
   "contracts/daily_rewards",
   "contracts/streak_counter",
   "contracts/energy",
