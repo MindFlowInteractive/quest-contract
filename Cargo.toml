@@ -118,6 +118,7 @@ members = [
   "contracts/token_streaming",
   "contracts/unlock_keys",
   "contracts/circuit_breaker",
+  "contracts/attendance_nft",
 ]
 
 [workspace.dependencies]
