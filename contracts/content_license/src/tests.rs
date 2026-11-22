@@ -190,7 +190,8 @@ fn revocation_follows_published_terms_only() {
     assert!(client.try_revoke(&f.creator, &f.buyer, &7).is_err());
 
     // A different address may never revoke.
-    client.purchase(&f.buyer, &8, &2);
+    client.register_terms(&f.creator, &8, &LicenseKind::PaidPerPlay, &100, &0, &true, &false);
+    client.purchase(&f.buyer, &8, &1);
     assert!(client.try_revoke(&f.other, &f.buyer, &8).is_err());
 }
 
