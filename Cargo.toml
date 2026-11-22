@@ -103,6 +103,8 @@ members = [
     "contracts/validation_lib",
     "contracts/batch_minting",
     "contracts/royalty_distribution",
+  "contracts/content_license",
+  "contracts/item_durability",
 
   "contracts/query_engine",
   "contracts/collateral_lending",
