@@ -105,6 +105,7 @@ members = [
     "contracts/royalty_distribution",
   "contracts/content_license",
   "contracts/item_durability",
+  "contracts/points_ledger",
 
   "contracts/query_engine",
   "contracts/collateral_lending",
