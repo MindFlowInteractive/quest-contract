@@ -39,7 +39,7 @@ fn authorized_awarder_can_earn() {
     let player = Address::generate(&env);
     env.ledger().with_mut(|l| l.timestamp = 1_000);
 
-    let new_balance = client.earn(&awarder, &player, &50, &REASON_PUZZLE);
+    let new_balance = client.earn(&awarder, &player, &50, &REASON_PUZZLE, &0);
 
     assert_eq!(new_balance, 50);
     assert_eq!(client.balance(&player), 50);
@@ -52,6 +52,7 @@ fn authorized_awarder_can_earn() {
             reason: REASON_PUZZLE,
             awarder: awarder.clone(),
             timestamp: 1_000,
+            expires_at: 0,
         }
     );
 }
@@ -61,9 +62,9 @@ fn balance_equals_sum_of_history() {
     let (env, client, _, awarder) = setup();
     let player = Address::generate(&env);
 
-    client.earn(&awarder, &player, &10, &REASON_PUZZLE);
-    client.earn(&awarder, &player, &25, &REASON_ACHIEVEMENT);
-    client.earn(&awarder, &player, &7, &REASON_PUZZLE);
+    client.earn(&awarder, &player, &10, &REASON_PUZZLE, &0);
+    client.earn(&awarder, &player, &25, &REASON_ACHIEVEMENT, &0);
+    client.earn(&awarder, &player, &7, &REASON_PUZZLE, &0);
 
     let history = client.history(&player);
     assert_eq!(history.len(), 3);
@@ -78,8 +79,8 @@ fn players_are_tracked_independently() {
     let p1 = Address::generate(&env);
     let p2 = Address::generate(&env);
 
-    client.earn(&awarder, &p1, &10, &REASON_PUZZLE);
-    client.earn(&awarder, &p2, &99, &REASON_ACHIEVEMENT);
+    client.earn(&awarder, &p1, &10, &REASON_PUZZLE, &0);
+    client.earn(&awarder, &p2, &99, &REASON_ACHIEVEMENT, &0);
 
     assert_eq!(client.balance(&p1), 10);
     assert_eq!(client.balance(&p2), 99);
@@ -93,7 +94,7 @@ fn unauthorized_caller_cannot_earn() {
     let (env, client, _, _) = setup();
     let stranger = Address::generate(&env);
     let player = Address::generate(&env);
-    client.earn(&stranger, &player, &10, &REASON_PUZZLE);
+    client.earn(&stranger, &player, &10, &REASON_PUZZLE, &0);
 }
 
 #[test]
@@ -103,7 +104,7 @@ fn removed_awarder_cannot_earn() {
     let player = Address::generate(&env);
     client.remove_awarder(&awarder);
     assert!(!client.is_awarder(&awarder));
-    client.earn(&awarder, &player, &10, &REASON_PUZZLE);
+    client.earn(&awarder, &player, &10, &REASON_PUZZLE, &0);
 }
 
 #[test]
@@ -111,7 +112,7 @@ fn removed_awarder_cannot_earn() {
 fn zero_amount_rejected() {
     let (env, client, _, awarder) = setup();
     let player = Address::generate(&env);
-    client.earn(&awarder, &player, &0, &REASON_PUZZLE);
+    client.earn(&awarder, &player, &0, &REASON_PUZZLE, &0);
 }
 
 #[test]
@@ -132,4 +133,119 @@ fn only_admin_can_add_awarder() {
     client.initialize(&admin);
     env.set_auths(&[]);
     client.add_awarder(&Address::generate(&env));
+}
+
+// ---------------------------------------------------------------------------
+// Spend and expiry
+// ---------------------------------------------------------------------------
+
+#[test]
+fn spend_reduces_balance_and_returns_new_balance() {
+    let (env, client, _, awarder) = setup();
+    let player = Address::generate(&env);
+    env.ledger().with_mut(|l| l.timestamp = 1_000);
+
+    client.earn(&awarder, &player, &50, &REASON_PUZZLE, &0);
+    assert_eq!(client.spend(&player, &20), 30);
+    assert_eq!(client.balance(&player), 30);
+}
+
+#[test]
+#[should_panic(expected = "amount must be greater than zero")]
+fn spend_requires_positive_amount() {
+    let (env, client, _, awarder) = setup();
+    let player = Address::generate(&env);
+    client.earn(&awarder, &player, &50, &REASON_PUZZLE, &0);
+    client.spend(&player, &0);
+}
+
+#[test]
+#[should_panic(expected = "insufficient unexpired balance")]
+fn spend_cannot_exceed_unexpired_balance() {
+    let (env, client, _, awarder) = setup();
+    let player = Address::generate(&env);
+    client.earn(&awarder, &player, &10, &REASON_PUZZLE, &0);
+    client.spend(&player, &11);
+    assert_eq!(client.balance(&player), 10);
+}
+
+#[test]
+fn spend_consumes_oldest_entries_first() {
+    let (env, client, _, awarder) = setup();
+    let player = Address::generate(&env);
+
+    env.ledger().with_mut(|l| l.timestamp = 1_000);
+    client.earn(&awarder, &player, &10, &REASON_PUZZLE, &0);
+    env.ledger().with_mut(|l| l.timestamp = 2_000);
+    client.earn(&awarder, &player, &20, &REASON_PUZZLE, &0);
+
+    // FIFO: the first 10-point entry is consumed, the 20-point entry is
+    // reduced to cover the remainder.
+    assert_eq!(client.spend(&player, &25), 5);
+    let history = client.history(&player);
+    assert_eq!(history.len(), 1);
+    assert_eq!(history.get(0).unwrap().amount, 5);
+    assert_eq!(client.balance(&player), 5);
+}
+
+#[test]
+fn expired_points_are_excluded_from_balance() {
+    let (env, client, _, awarder) = setup();
+    let player = Address::generate(&env);
+
+    env.ledger().with_mut(|l| l.timestamp = 1_000);
+    client.earn(&awarder, &player, &50, &REASON_PUZZLE, &2_000);
+    assert_eq!(client.balance(&player), 50);
+
+    env.ledger().with_mut(|l| l.timestamp = 2_000);
+    assert_eq!(client.balance(&player), 0);
+}
+
+#[test]
+fn spend_skips_expired_entries() {
+    let (env, client, _, awarder) = setup();
+    let player = Address::generate(&env);
+
+    env.ledger().with_mut(|l| l.timestamp = 1_000);
+    client.earn(&awarder, &player, &30, &REASON_PUZZLE, &0);
+    env.ledger().with_mut(|l| l.timestamp = 2_000);
+    client.earn(&awarder, &player, &20, &REASON_ACHIEVEMENT, &3_000);
+
+    // The second entry is now expired; the unexpired 30 still spendable.
+    env.ledger().with_mut(|l| l.timestamp = 3_000);
+    assert_eq!(client.balance(&player), 30);
+    assert_eq!(client.spend(&player, &30), 0);
+}
+
+#[test]
+#[should_panic(expected = "insufficient unexpired balance")]
+fn expired_points_cannot_be_spent() {
+    let (env, client, _, awarder) = setup();
+    let player = Address::generate(&env);
+
+    env.ledger().with_mut(|l| l.timestamp = 1_000);
+    client.earn(&awarder, &player, &50, &REASON_PUZZLE, &2_000);
+    env.ledger().with_mut(|l| l.timestamp = 2_000);
+
+    client.spend(&player, &50);
+    assert_eq!(client.balance(&player), 0);
+}
+
+#[test]
+#[should_panic]
+fn only_player_can_spend() {
+    let (env, client, _, awarder) = setup();
+    let player = Address::generate(&env);
+    client.earn(&awarder, &player, &10, &REASON_PUZZLE, &0);
+    env.set_auths(&[]);
+    client.spend(&player, &10);
+}
+
+#[test]
+#[should_panic(expected = "expires_at must be in the future")]
+fn earn_rejects_expiry_in_the_past() {
+    let (env, client, _, awarder) = setup();
+    let player = Address::generate(&env);
+    env.ledger().with_mut(|l| l.timestamp = 1_000);
+    client.earn(&awarder, &player, &10, &REASON_PUZZLE, &999);
 }

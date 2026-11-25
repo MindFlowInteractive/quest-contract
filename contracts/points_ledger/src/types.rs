@@ -13,6 +13,9 @@ pub struct PointsEntry {
     pub awarder: Address,
     /// Ledger timestamp of the event.
     pub timestamp: u64,
+    /// Ledger timestamp at which these points expire; `0` means they never
+    /// expire.
+    pub expires_at: u64,
 }
 
 #[contracttype]

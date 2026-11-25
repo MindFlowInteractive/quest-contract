@@ -339,6 +339,25 @@ fn authorization_is_required_for_sensitive_operations() {
 }
 
 #[test]
+fn consecutive_days_increment_and_missed_day_resets() {
+    let f = Fixture::new();
+    f.reach(3);
+    assert_eq!(f.client().get_streak(&f.player).unwrap().current, 3);
+    f.day(5); // missed day 4 with no freeze
+    let streak = f.client().check_in(&f.player);
+    assert_eq!((streak.current, streak.best), (1, 3));
+}
+
+#[test]
+fn same_day_repeat_check_in_does_not_double_count() {
+    let f = Fixture::new();
+    f.day(1);
+    f.client().check_in(&f.player);
+    let streak = f.client().check_in(&f.player);
+    assert_eq!((streak.current, streak.best), (1, 1));
+}
+
+#[test]
 fn check_in_authorizes_verifier_not_player() {
     let f = Fixture::new();
     f.client().check_in(&f.player);
