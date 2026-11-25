@@ -106,6 +106,7 @@ members = [
   "contracts/content_license",
   "contracts/item_durability",
   "contracts/points_ledger",
+  "contracts/seed_beacon",
 
   "contracts/query_engine",
   "contracts/collateral_lending",
